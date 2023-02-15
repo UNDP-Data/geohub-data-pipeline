@@ -8,7 +8,7 @@ RUN apt-get update \
   gdal-bin python3-pip \
   && rm -rf /var/lib/apt/lists/*
 
-RUN git clone https://github.com/mapbox/tippecanoe.git \
+RUN git clone https://github.com/felt/tippecanoe \
   && cd tippecanoe \
   && make -j \
   && make install \
