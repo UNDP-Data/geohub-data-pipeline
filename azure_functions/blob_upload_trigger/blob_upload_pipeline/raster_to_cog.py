@@ -8,16 +8,16 @@ from .utils import prepare_filename, upload_file
 logger = logging.getLogger(__name__)
 
 
-def translate_upload(src_file, dst_path, config={}, **options):
+def translate_upload(src_data, dst_path, config={}, **options):
     """Convert image to COG and upload to azure."""
 
     config, output_profile = gdal_configs(config=config)
 
-    logging.info(f"Translating {src_file} to COG")
+    logging.info(f"Translating {src_data} to COG")
     with MemoryFile() as mem_dst:
         # Important, we pass `mem_dst.name` as output dataset path
         cog_translate(
-            src_file,
+            src_data,
             mem_dst.name,
             output_profile,
             config=config,
