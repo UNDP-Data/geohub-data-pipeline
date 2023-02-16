@@ -14,21 +14,23 @@ def prepare_file(blob_path):
 
     tempFilePath = tempfile.gettempdir()
     tmp_filename = tempfile.NamedTemporaryFile()
-    tmp_filename.write(download_stream.readall())
 
-    working_path = copy_to_working(tmp_filename.name, cleaned_path)
+    with open(tmp_filename.name, mode="wb") as download_file:
+        download_file.write(download_stream.readall())
+
+    copy_to_working(tmp_filename.name, cleaned_path)
     raster_layers, vector_layers = gdal_open(tmp_filename.name)
 
-    return raster_layers, vector_layers, working_path
+    return raster_layers, vector_layers, tmp_filename.name
 
 
 def gdal_open(filename):
     dataset = gdal.Open(filename, gdal.GA_ReadOnly)
-
+    logging.info(f"Dataset: {dataset}")
     return dataset.RasterCount, dataset.GetLayerCount()
 
 
-def upload_file(dst_path, streamed_file):
+def upload_file(streamed_file, dst_path):
     blob_client = azure_container_client().get_blob_client(dst_path)
     blob_client.upload_blob(streamed_file, overwrite=True)
 
@@ -52,5 +54,5 @@ def prepare_filename(file_path, directory):
 def copy_to_working(streamed_file, file_name):
     """Copy uploaded file to working directory."""
     dst_path = prepare_filename(file_name, directory="working")
-    upload_file(dst_path, streamed_file)
-    return dst_path
+    upload_file(streamed_file, dst_path)
+    return True

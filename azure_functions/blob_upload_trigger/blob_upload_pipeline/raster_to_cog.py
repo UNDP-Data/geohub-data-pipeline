@@ -32,7 +32,6 @@ def translate_upload(src_file, dst_path, config={}, **options):
 
 def raster_process(
     raster_path,
-    profile="deflate",
     **options,
 ):
     """Opens the uploaded raster and attempts to translate if necesarry."""
@@ -47,14 +46,13 @@ def raster_process(
                 logger.info(
                     f"{raster_path} is already a valid cog. No translation needed"
                 )
-                upload_file(raster_path, dst_path)
+                upload_file(src_dataset, dst_path)
                 return True
             else:
                 logger.info(f"Beginning translation of {raster_path}")
                 translate_upload(
                     src_dataset,
                     dst_path,
-                    profile=profile,
                     config={"session": rasterio_az_session},
                     **options,
                 )
