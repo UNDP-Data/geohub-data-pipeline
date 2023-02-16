@@ -11,9 +11,6 @@ logging.basicConfig(
 
 account_url = os.getenv("ACCOUNT_URL")
 container_name = os.getenv("CONTAINER_NAME")
-credential_string = os.getenv("CREDENTIAL_STRING")
-
-azure_account = os.getenv("ACCOUNT_NAME")
 azure_storage_access_key = os.getenv("AZURE_ACCESS_KEY")
 
 
