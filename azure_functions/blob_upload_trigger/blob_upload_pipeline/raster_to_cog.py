@@ -9,7 +9,7 @@ from .utils import prepare_filename, upload_file
 logger = logging.getLogger(__name__)
 
 
-def translate_upload(src_file, dst_path, container_client, config={}, **options):
+def translate_upload(src_file, dst_path, config={}, **options):
     """Convert image to COG and upload to azure."""
 
     config, output_profile = gdal_configs(config=config)
@@ -26,7 +26,7 @@ def translate_upload(src_file, dst_path, container_client, config={}, **options)
             **options,
         )
 
-        upload_file(mem_dst, dst_path, container_client)
+        upload_file(mem_dst, dst_path)
     return True
 
 
@@ -37,9 +37,9 @@ def raster_process(
 ):
     """Opens the uploaded raster and attempts to translate if necesarry."""
 
-    dst_path = prepare_filename(raster_path)
+    dst_path = prepare_filename(raster_path, directory="datasets")
     with rasterio.Env(session=rasterio_az_session):
-        with rasterio.open(raster_path, "r") as file:
+        with rasterio.open(raster_path, "r") as src_dataset:
 
             is_valid, errors, warnings = cog_validate(raster_path)
 
@@ -47,14 +47,13 @@ def raster_process(
                 logger.info(
                     f"{raster_path} is already a valid cog. No translation needed"
                 )
-                upload_file(raster_path, dst_path, azure_container_client)
+                upload_file(raster_path, dst_path)
                 return True
             else:
                 logger.info(f"Beginning translation of {raster_path}")
                 translate_upload(
-                    file,
+                    src_dataset,
                     dst_path,
-                    azure_container_client,
                     profile=profile,
                     config={"session": rasterio_az_session},
                     **options,

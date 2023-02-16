@@ -9,13 +9,12 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
+account_url = os.getenv("ACCOUNT_URL")
+container_name = os.getenv("container_name")
+credential_string = os.getenv("undpgeohub_STORAGE")
 
-account_url = os.environ.get("ACCOUNT_URL")
-container_name = os.environ.get("CONTAINER_NAME")
-credential_string = os.environ.get("CREDENTIAL_STRING")
-
-azure_account = os.environ.get("ACCOUNT_NAME")
-azure_storage_access_key = os.environ.get("AZURE_ACCESS_KEY")
+azure_account = os.getenv("ACCOUNT_NAME")
+azure_storage_access_key = os.getenv("AZURE_ACCESS_KEY")
 
 
 def gdal_configs(config={}, profile="deflate"):

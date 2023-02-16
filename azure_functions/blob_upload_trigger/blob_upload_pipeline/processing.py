@@ -4,13 +4,13 @@ logger = logging.getLogger(__name__)
 
 
 from .raster_to_cog import raster_process
-from .utils import copy_to_working, download_file
+from .utils import prepare_file
 from .vector_to_tiles import vector_process
 
 
 def process(filename):
-
-    raster_layers, vector_layers = download_file(filename)
+    logging.info(f"Processing {filename}")
+    raster_layers, vector_layers, working_path = prepare_file(filename)
 
     if not raster_layers or vector_layers:
         logging.error("File is not readable in a GIS")
@@ -19,11 +19,9 @@ def process(filename):
         return "both"
 
     elif raster_layers > 0:
-        working_path = copy_to_working(filename)
         raster_process(working_path)
 
     elif vector_layers > 0:
-        working_path = copy_to_working(filename)
         vector_process(working_path)
 
     else:
