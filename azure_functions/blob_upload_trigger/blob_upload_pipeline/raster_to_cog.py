@@ -13,6 +13,7 @@ def translate_upload(src_file, dst_path, config={}, **options):
 
     config, output_profile = gdal_configs(config=config)
 
+    logging.info(f"Translating {src_file} to COG")
     with MemoryFile() as mem_dst:
         # Important, we pass `mem_dst.name` as output dataset path
         cog_translate(
@@ -35,6 +36,7 @@ def raster_process(
 ):
     """Opens the uploaded raster and attempts to translate if necesarry."""
 
+    logging.info(f"Validating {raster_path} as COG")
     dst_path = prepare_filename(raster_path, directory="datasets")
     with rasterio.open(raster_path, "r") as src_dataset:
 

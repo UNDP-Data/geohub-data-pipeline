@@ -16,12 +16,15 @@ def process(filename):
         logging.error("File is not readable in a GIS")
 
     if raster_layers > 0 and vector_layers > 0:
+        logging.info("File contains both raster and vector data, beginning processing")
         return "both"
 
     elif raster_layers > 0:
+        logging.info("File contains raster data, beginning processing")
         raster_process(local_path)
 
     elif vector_layers > 0:
+        logging.info("File contains vector data, beginning processing")
         vector_process(local_path)
 
     else:
