@@ -29,7 +29,6 @@ def prepare_file(blob_path):
 def gdal_open(filename):
 
     logging.info(f"Opening {filename} with GDAL")
-
     dataset = gdal.Open(filename, gdal.GA_ReadOnly)
 
     return dataset.RasterCount, dataset.GetLayerCount()

@@ -47,7 +47,6 @@ def raster_process(
             upload_file(src_dataset, dst_path)
             return True
         else:
-            logger.info(f"Beginning translation of {raster_path}")
             translate_upload(
                 src_dataset,
                 dst_path,
