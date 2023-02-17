@@ -1,11 +1,11 @@
-FROM ubuntu:23.04
+FROM osgeo/gdal:ubuntu-small-3.6.2
 ENV TZ=Etc/UTC
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
-  build-essential ca-certificates git wget zlib1g-dev \
-  gdal-bin python3-pip \
+  build-essential ca-certificates git wget zlib1g-dev libsqlite3-dev \
+  python3-pip \
   && rm -rf /var/lib/apt/lists/*
 
 RUN git clone https://github.com/felt/tippecanoe \
@@ -22,4 +22,4 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 
 COPY blob_upload_pipeline ./blob_upload_pipeline
 
-CMD ["python3", "-m", "blob_upload_pipeline"]
+CMD ["python3", "-m", "blob_upload_pipeline.__init__"]

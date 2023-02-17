@@ -5,7 +5,7 @@ import azure.functions as func
 from .processing import process
 
 
-async def main(myblob: func.InputStream):
+def main(myblob: func.InputStream):
     logging.info(
         f"Python blob trigger function processed blob \n"
         f"User: {myblob.name}\n"

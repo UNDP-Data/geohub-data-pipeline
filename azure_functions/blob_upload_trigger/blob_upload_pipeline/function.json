@@ -1,11 +1,12 @@
 {
   "scriptFile": "__init__.py",
+  "disabled": false,
   "bindings": [
     {
       "name": "myblob",
       "type": "blobTrigger",
       "direction": "in",
-      "path": "userdata/{user}/{directory}",
+      "path": "userdata/{name}",
       "connection": "undpgeohub_STORAGE"
     }
   ]
