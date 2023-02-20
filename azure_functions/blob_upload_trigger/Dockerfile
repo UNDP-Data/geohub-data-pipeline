@@ -5,7 +5,7 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
   build-essential ca-certificates git wget zlib1g-dev libsqlite3-dev \
-  gdal-bin libgdal-dev libpq-dev python3-pip \
+  libgdal-dev libpq-dev python3-pip \
   && rm -rf /var/lib/apt/lists/*
 
 RUN git clone https://github.com/felt/tippecanoe \
@@ -20,6 +20,6 @@ WORKDIR /usr/src/app
 COPY requirements.txt ./
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-COPY azure_functions/blob_upload_trigger/blob_upload_pipeline ./blob_upload_pipeline
+COPY blob_upload_pipeline ./blob_upload_pipeline
 
 CMD ["python3", "-m", "blob_upload_pipeline.__init__"]
