@@ -31,7 +31,7 @@ jobs:
       with:
         push: true
         tags: undpgeohub.azurecr.io/${{ secrets.AzureAppService_ContainerUsername_7f2c17ca46994886bd9f4844c9431ca9 }}/geohub-data-pipeline:${{ github.sha }}
-        file: ./Dockerfile
+        file: ./azure_functions/blob_upload_trigger/Dockerfile
 
   deploy:
     runs-on: ubuntu-latest
