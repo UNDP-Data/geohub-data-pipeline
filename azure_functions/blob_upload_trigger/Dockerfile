@@ -5,8 +5,10 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
   build-essential ca-certificates git wget zlib1g-dev libsqlite3-dev \
-  libgdal-dev libpq-dev python3-pip \
+  python3-pip \
   && rm -rf /var/lib/apt/lists/*
+
+RUN pip3 install --upgrade pip
 
 RUN git clone https://github.com/felt/tippecanoe \
   && cd tippecanoe \
@@ -16,6 +18,9 @@ RUN git clone https://github.com/felt/tippecanoe \
   && rm -rf tippecanoe
 
 WORKDIR /usr/src/app
+
+RUN apt-get update \
+    && apt-get install -y gdal-bin libgdal-dev
 
 COPY requirements.txt ./
 RUN pip3 install --no-cache-dir -r requirements.txt
