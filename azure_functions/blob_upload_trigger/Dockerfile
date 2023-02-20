@@ -20,6 +20,6 @@ WORKDIR /usr/src/app
 COPY requirements.txt ./
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-COPY blob_upload_pipeline ./blob_upload_pipeline
+COPY azure_functions/blob_upload_trigger/blob_upload_pipeline ./blob_upload_pipeline
 
 CMD ["python3", "-m", "blob_upload_pipeline.__init__"]
