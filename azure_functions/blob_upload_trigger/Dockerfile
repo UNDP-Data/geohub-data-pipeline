@@ -1,4 +1,6 @@
 FROM mcr.microsoft.com/azure-functions/python:4-python3.9-slim
+ENV AzureWebJobsScriptRoot=/home/site/wwwroot/blob_upload_pipeline \
+    AzureFunctionsJobHost__Logging__Console__IsEnabled=true
 ENV TZ=Etc/UTC
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
@@ -27,4 +29,4 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 
 COPY azure_functions/blob_upload_trigger/blob_upload_pipeline ./blob_upload_pipeline
 
-CMD ["python3", "-m", "blob_upload_pipeline.__init__"]
+COPY . /home/site/wwwroot
