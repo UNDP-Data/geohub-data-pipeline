@@ -7,13 +7,13 @@ RUN apt-get update \
   build-essential ca-certificates git wget zlib1g-dev libsqlite3-dev \
   python3-pip \
   && rm -rf /var/lib/apt/lists/*
-
-RUN git clone https://github.com/felt/tippecanoe \
-  && cd tippecanoe \
-  && make -j \
-  && make install \
-  && cd ../ \
-  && rm -rf tippecanoe
+# temporary only because compiling tp takes lots of time
+#RUN git clone https://github.com/felt/tippecanoe \
+#  && cd tippecanoe \
+#  && make -j \
+#  && make install \
+#  && cd ../ \
+#  && rm -rf tippecanoe
 
 WORKDIR /usr/src/app
 
