@@ -13,8 +13,8 @@ def main(myblob: func.InputStream):
     try:
 
         if str(myblob.name).split("/")[2] == "raw":
-            params = {"filename": myblob.name}
-            requests.get("ingest.undpgeohub.org/ingest", params=params)
+            params = {"myblob": myblob.name}
+            requests.get("https://ingest.undpgeohub.org/ingest", params=params)
 
     except Exception as e:
         logging.error(f"File is not coming from the user raw upload directory! {e}")
