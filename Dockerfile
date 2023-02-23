@@ -15,11 +15,11 @@ RUN git clone https://github.com/felt/tippecanoe \
   && cd ../ \
   && rm -rf tippecanoe
 
-WORKDIR /usr/src/app
+WORKDIR /usr/src/
 
 COPY requirements.txt ./
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-COPY azure_functions/blob_upload_trigger/blob_upload_pipeline ./blob_upload_pipeline
+COPY /app ./app
 
-CMD ["python3", "-m", "ingest"]
+CMD ["python3", "-m", "app.ingest"]
