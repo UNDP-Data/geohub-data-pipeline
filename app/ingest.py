@@ -1,9 +1,14 @@
 import logging
 
+from fastapi import FastAPI
+
 from .processing import process
 
+app = FastAPI()
 
-def main(myblob):
+
+@app.post("/ingestion")
+def main(myblob: str):
     logging.info(
         f"Python blob trigger function processed blob \n"
         f"User: {myblob.name}\n"
