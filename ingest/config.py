@@ -15,7 +15,8 @@ container_name = os.getenv("CONTAINER_NAME")
 assert container_name is not None, f'CONTAINER_NAME env var is not set'
 azure_storage_access_key = os.getenv("AZURE_ACCESS_KEY")
 assert azure_storage_access_key is not None, f'AZURE_ACCESS_KEY env var is not set'
-
+connection_string = os.getenv('CONNECTION_STRING')
+assert connection_string is not None, f'CONNECTION_STRING env var is not set'
 
 def gdal_configs(config={}, profile="deflate"):
     """Generates a config dict and output profile for file."""

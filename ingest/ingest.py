@@ -6,6 +6,7 @@ from .config import logging
 from .raster_to_cog import raster_ingest
 from .utils import prepare_file
 from .vector_to_tiles import vector_ingest
+from .azure_clients import copy_to_working
 
 logger = logging.getLogger(__name__)
 
@@ -15,10 +16,19 @@ azlogger = logging.getLogger('azure.core.pipeline.policies.http_logging_policy')
 azlogger.setLevel(logging.WARNING)
 
 
+
+
+
 @app_router.get("/ingest1")
-async def ingest(blob=None):
-    logger.info(f'Starting to ingest {blob}')
-    return f'Finished ingesting {blob}'
+async def ingest(blob_path:str=None):
+    logger.info(f'Starting to ingest {blob_path}')
+    #1 copy data file to working folder
+
+    copied_blob_path = await copy_to_working(src_blob_path=blob_path)
+
+
+
+    return f'Finished ingesting {blob_path}'
 
 
 @app_router.get("/ingest")
