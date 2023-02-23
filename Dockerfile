@@ -20,6 +20,6 @@ WORKDIR /usr/src/
 COPY requirements.txt ./
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-COPY /app ./app
+COPY /ingest ./app
 
-CMD ["python3", "-m", "app.main"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

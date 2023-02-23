@@ -1,13 +1,13 @@
 import logging
 
-from fastapi import FastAPI
+from fastapi import APIRouter
 
-from .ingestion import ingest
+from .read import read
 
-app = FastAPI()
+app_router = APIRouter()
 
 
-@app.get("/ingest")
+@app_router.get("/ingest")
 async def main(myblob: str):
     logging.info(
         f"Python blob trigger function processed blob \n"

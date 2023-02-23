@@ -8,8 +8,8 @@ from .utils import prepare_file
 from .vector_to_tiles import vector_ingest
 
 
-def ingest(filename):
-    logging.info(f"Ingesting {filename}")
+def read(filename):
+    logging.info(f"Reading {filename}")
     raster_layers, vector_layers, local_path = prepare_file(filename)
 
     if not raster_layers or vector_layers:
