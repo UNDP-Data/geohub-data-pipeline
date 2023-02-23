@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException
 
 from .config import logging
 from .raster_to_cog import raster_ingest
-from .utils import prepare_file
+from .utils import prepare_file, gdal_open
 from .vector_to_tiles import vector_ingest
 from .azure_clients import copy_raw2working
 import json
@@ -32,12 +32,16 @@ async def ingest(blob_path:str=None):
     if not '/raw/' in blob_path:
         return HTTPException(status_code=400, detail=f'blob_path is not located in raw folder')
     try:
-        copied_blob_path = await copy_raw2working(raw_blob_path=blob_path)
+        working_blob_path = await copy_raw2working(raw_blob_path=blob_path)
     except Exception as ce:
         raise HTTPException(status_code=500, detail=f'Could not copy {blob_path} to working directory')
 
-    #2 create the datasets folder = a folder with
+    #2 create the datasets folder tah will hold all physical files. It does not make
+    # sense to physically create the folder because folders are not real in azure
 
+    dataset_folder = blob_path.replace('/raw/', '/datasets') # the folder name  will contain the extension
+    gdal_open(working_blob_path)
+    #3
     return f'Finished ingesting {blob_path}'
 
 
