@@ -22,4 +22,4 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 
 COPY /app ./app
 
-CMD ["python3", "-m", "app.ingest"]
+CMD ["python3", "-m", "app.main"]

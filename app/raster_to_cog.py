@@ -30,7 +30,7 @@ def translate_upload(src_data, dst_path, config={}, **options):
     return True
 
 
-def raster_process(
+def raster_ingest(
     raster_path,
     **options,
 ):

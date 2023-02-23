@@ -2,7 +2,7 @@ import logging
 
 from fastapi import FastAPI
 
-from .processing import process
+from .ingestion import ingest
 
 app = FastAPI()
 
@@ -17,10 +17,10 @@ def main(myblob: str):
     try:
 
         if str(myblob.name).split("/")[2] == "raw":
-            process(myblob.name)
+            ingest(myblob.name)
 
     except Exception as e:
         logging.error(f"Exception! {e}")
         raise e
 
-    logging.info("Completed processing, and uploaded dataset to Azure Storage.")
+    logging.info("Completed ingesting, and uploaded dataset to Azure Storage.")
