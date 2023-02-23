@@ -17,7 +17,8 @@ azlogger.setLevel(logging.WARNING)
 
 @app_router.get("/ingest1")
 async def ingest(blob=None):
-    logger.info(f'starting to ingest {blob}')
+    logger.info(f'Starting to ingest {blob}')
+    return f'Finished ingesting {blob}'
 
 
 @app_router.get("/ingest")
