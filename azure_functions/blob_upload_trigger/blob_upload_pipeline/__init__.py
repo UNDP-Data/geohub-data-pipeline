@@ -1,8 +1,7 @@
 import logging
 
 import azure.functions as func
-
-from .processing import process
+import requests
 
 
 def main(myblob: func.InputStream):
@@ -14,10 +13,11 @@ def main(myblob: func.InputStream):
     try:
 
         if str(myblob.name).split("/")[2] == "raw":
-            process(myblob.name)
+            params = {"filename": myblob.name}
+            requests("ingest.undpgeohub.org/ingest", params=params)
 
     except Exception as e:
-        logging.error(f"Exception! {e}")
+        logging.error(f"File is not coming from the user raw upload directory! {e}")
         raise e
 
     logging.info("Completed processing, and uploaded dataset to Azure Storage.")
