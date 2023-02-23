@@ -10,6 +10,14 @@ from .vector_to_tiles import vector_ingest
 logger = logging.getLogger(__name__)
 
 app_router = APIRouter()
+#silence azure logger
+azlogger = logging.getLogger('azure.core.pipeline.policies.http_logging_policy')
+azlogger.setLevel(logging.WARNING)
+
+
+@app_router.get("/ingest1")
+async def ingest(blob=None):
+    logger.info(f'starting to ingest {blob}')
 
 
 @app_router.get("/ingest")
