@@ -17,7 +17,7 @@ spec:
         - name: ingest
           image: undpgeohub.azurecr.io/geohub-data-pipeline:main
           ports:
-            - containerPort: 8080
+            - containerPort: 8000
           env:
             - name: AZURE_ACCESS_KEY
               value: "$AZURE_ACCESS_KEY"
@@ -29,3 +29,4 @@ spec:
               value: "$CONTAINER_NAME"
             - name: ACCOUNT_URL
               value: "$ACCOUNT_URL"
+          imagePullPolicy: Always
