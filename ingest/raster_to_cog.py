@@ -1,3 +1,6 @@
+import os.path
+import sys
+
 import rasterio
 from rasterio.io import MemoryFile
 from rio_cogeo.cogeo import cog_translate, cog_validate
@@ -38,6 +41,8 @@ def raster_ingest(
 
     logging.info(f"Validating {raster_path} as COG")
     dst_path = prepare_filename(raster_path, directory="datasets")
+    logging.info(f'ratster_path exists: {os.path.exists(raster_path) }')
+    logging.info(f'dst_path={dst_path}')
     with rasterio.open(raster_path, "r") as src_dataset:
 
         is_valid, errors, warnings = cog_validate(raster_path)
