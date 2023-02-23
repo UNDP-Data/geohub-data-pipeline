@@ -7,8 +7,8 @@ from .ingestion import ingest
 app = FastAPI()
 
 
-@app.post("/ingestion")
-def main(myblob: str):
+@app.get("/ingest")
+async def main(myblob: str):
     logging.info(
         f"Python blob trigger function processed blob \n"
         f"User: {myblob.name}\n"
