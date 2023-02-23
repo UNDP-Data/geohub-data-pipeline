@@ -10,8 +10,11 @@ logging.basicConfig(
 )
 
 account_url = os.getenv("ACCOUNT_URL")
+assert account_url is not None, f'ACCOUNT_URL env var is not set'
 container_name = os.getenv("CONTAINER_NAME")
+assert container_name is not None, f'CONTAINER_NAME env var is not set'
 azure_storage_access_key = os.getenv("AZURE_ACCESS_KEY")
+assert azure_storage_access_key is not None, f'AZURE_ACCESS_KEY env var is not set'
 
 
 def gdal_configs(config={}, profile="deflate"):
