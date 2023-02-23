@@ -15,11 +15,13 @@ RUN git clone https://github.com/felt/tippecanoe \
   && cd ../ \
   && rm -rf tippecanoe
 
-WORKDIR /usr/src/
+WORKDIR /usr/src/app
 
 COPY requirements.txt ./
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-COPY /ingest ./app
+COPY main.py ./ 
+COPY /ingest ./ingest
+
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

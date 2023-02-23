@@ -17,7 +17,7 @@ async def main(myblob: str):
     try:
 
         if str(myblob.name).split("/")[2] == "raw":
-            ingest(myblob.name)
+            read(myblob.name)
 
     except Exception as e:
         logging.error(f"Exception! {e}")

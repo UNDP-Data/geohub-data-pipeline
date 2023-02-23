@@ -4,7 +4,7 @@ from ingest import ingest
 app = FastAPI()
 
 # Mount routers
-app.include_router(ingest.router)
+app.include_router(ingest.app_router)
 
 
 if __name__ == "__main__":
