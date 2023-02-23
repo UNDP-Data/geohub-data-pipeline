@@ -3,9 +3,9 @@ from .config import logging
 logger = logging.getLogger(__name__)
 
 
-from .raster_to_cog import raster_process
+from .raster_to_cog import raster_ingest
 from .utils import prepare_file
-from .vector_to_tiles import vector_process
+from .vector_to_tiles import vector_ingest
 
 
 def process(filename):
@@ -21,11 +21,11 @@ def process(filename):
 
     elif raster_layers > 0:
         logging.info("File contains raster data, beginning processing")
-        raster_process(local_path)
+        raster_ingest(local_path)
 
     elif vector_layers > 0:
         logging.info("File contains vector data, beginning processing")
-        vector_process(local_path)
+        vector_ingest(local_path)
 
     else:
         logging.error("No readable data")

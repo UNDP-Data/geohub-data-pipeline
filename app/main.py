@@ -2,7 +2,7 @@ import logging
 
 from fastapi import FastAPI
 
-from .processing import process
+from .ingestion import process
 
 app = FastAPI()
 
