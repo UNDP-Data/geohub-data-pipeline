@@ -41,7 +41,7 @@ To use the API, follow these steps:
 
 
 
-### Testing the App Locally with Docker Compose
+## Testing the App Locally with Docker Compose
 
 To test the app locally, you can use Docker Compose to build and run the app in a local development environment.
 
