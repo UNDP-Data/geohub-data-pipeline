@@ -51,7 +51,7 @@ To test the app locally, you can use Docker Compose to build and run the app in 
 
 2. Navigate to the cloned repository.
 
-        cd your-repository
+        cd geohub-data-pipeline
 
 3. Copy the `.env` file in to the root directory of the repository. This file will contain the environment variables that are used by the app. The following variables are required:
 
