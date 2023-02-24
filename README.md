@@ -34,10 +34,9 @@ Here are the configuration options:
 
 To use the API, follow these steps:
 
-1. Deploy the Docker container to your AKS cluster by running the command ``.
-2. Expose the API endpoint to the internet by running the command `deployments/scripts/install.sh`.
-3. Send a file upload to the endpoint by making a POST request to the external IP address of the service.
-4. The API will determine whether the file is a raster or vector file, then convert it to a COG or PMTiles format and store it in the "datasets" directory in Azure.
+1. Deploy the Docker container to your AKS cluster by running the command `deployments/scripts/install.sh`.
+2. Send a file upload to the endpoint by making a POST request to the external IP address of the service.
+3. The API will determine whether the file is a raster or vector file, then convert it to a COG or PMTiles format and store it in the "datasets" directory in Azure.
 
 
 
