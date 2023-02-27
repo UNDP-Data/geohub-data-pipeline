@@ -1,4 +1,5 @@
-.vscode/
+.vscode
 .env
 *sample.dat
 test.tif
+*.pyc 

@@ -1,0 +1,28 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingest-ingress
+  namespace: data
+  annotations:
+    kubernetes.io/ingress.class: addon-http-application-routing
+    cert-manager.io/cluster-issuer: zerossl
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
+  
+spec:
+  tls:
+  - hosts:
+    - ingest.undpgeohub.org # update IP address here
+    secretName: ingest-cert
+  rules:
+  - host: ingest.undpgeohub.org
+    http:
+      paths:
+      - path: /ingest
+        pathType: Prefix
+        backend:
+          service:
+            name: ingest-service
+            port:
+              name: http

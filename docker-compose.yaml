@@ -1,0 +1,15 @@
+version: '3.8'
+services:
+  app:
+    build: .
+    environment:
+      - AZURE_ACCESS_KEY=${AZURE_ACCESS_KEY}
+      - ACCOUNT_NAME=${ACCOUNT_NAME}
+      - CREDENTIAL_STRING=${CREDENTIAL_STRING}
+      - CONTAINER_NAME=${CONTAINER_NAME}
+      - ACCOUNT_URL=${ACCOUNT_URL}
+      - CONNECTION_STRING=${CONNECTION_STRING}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./ingest:/usr/src/app/ingest/

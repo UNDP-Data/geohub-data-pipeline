@@ -45,7 +45,7 @@ import subprocess
 #     return out_dir
 
 
-def vector_process(filename):
+def vector_ingest(filename):
     subprocess.run(
         [
             "ogr2ogr",

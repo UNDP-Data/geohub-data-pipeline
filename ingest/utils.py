@@ -9,17 +9,16 @@ from .azure_clients import azure_container_client
 def prepare_file(blob_path):
 
     cleaned_path = prepare_filename(blob_path, directory="raw")
-
+    logging.info(f'Cleaned path is {cleaned_path}')
     logging.info(f"Creating Azure client and downloading new blob. {blob_path}")
     blob_client = azure_container_client()
-    download_stream = blob_client.get_blob_client(cleaned_path).download_blob()
+    download_stream = blob_client.get_blob_client(blob_path).download_blob()
 
-    tempFilePath = tempfile.gettempdir()
     tmp_filename = tempfile.NamedTemporaryFile()
 
     with open(tmp_filename.name, mode="wb") as download_file:
         download_file.write(download_stream.readall())
-
+    tmp_filename.seek(0)
     copy_to_working(tmp_filename.name, cleaned_path)
     raster_layers, vector_layers = gdal_open(tmp_filename.name)
 
