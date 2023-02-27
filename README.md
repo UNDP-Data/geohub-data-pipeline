@@ -1,5 +1,5 @@
 # geohub-data-pipeline
-The "geohub-data-pipeline" is an API endpoint that receives the filepath from uploads on the [Geohub](https://github.com/UNDP-Data/geohub) platform and converts them to Cloud-Optimized GeoTIFF (COG) or PMTiles format and stores them in an Azure Blob storage container. This project is designed to be run in a Docker container on AKS.
+The "geohub-data-pipeline" is an API endpoint that receives the filepath from uploads on the [Geohub](https://github.com/UNDP-Data/geohub) platform and converts them to Cloud-Optimized GeoTIFF (COG) or PMTiles format and stores them in an Azure Blob storage container. This project is designed to be run in a Docker container on AKS as a deployment.
 
 ## Getting Started
 
@@ -7,7 +7,7 @@ The "geohub-data-pipeline" is an API endpoint that receives the filepath from up
 
 To use this API, you'll need to have:
 
-- An Azure account with access to an Azure directory called "datasets"
+- An Azure account with access to an Azure Blob storage container for the UNDP Data Geohub
 - Docker installed on your local machine
 - An AKS cluster set up with kubectl configured to connect to it
 
@@ -35,8 +35,8 @@ Here are the configuration options:
 To use the API, follow these steps:
 
 1. Deploy the Docker container to your AKS cluster by running the command `deployments/scripts/install.sh`.
-2. Send a file upload to the endpoint by making a POST request to the external IP address of the service.
-3. The API will determine whether the file is a raster or vector file, then convert it to a COG or PMTiles format and store it in the "datasets" directory in Azure.
+2. Upload a file on the Geohub dev app, or send a file upload to the endpoint by making a POST request to the external IP address of the service.
+3. The API will determine whether the file is a raster or vector file, then convert it to a COG or PMTiles format and store it in the user's "datasets" directory in Azure.
 
 
 
