@@ -30,7 +30,9 @@ def gdal_open(filename):
     logging.info(f"Opening {filename} with GDAL")
     dataset = gdal.Open(filename, gdal.GA_ReadOnly)
 
-    return dataset.RasterCount, dataset.GetLayerCount()
+    nrasters, nvectors = dataset.RasterCount, dataset.GetLayerCount()
+    dataset = None
+    return nrasters, nvectors
 
 
 def upload_file(streamed_file, dst_path):

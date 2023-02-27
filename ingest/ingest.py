@@ -1,13 +1,11 @@
 import logging
-
 from fastapi import APIRouter, HTTPException
-
-from .config import logging
-from .raster_to_cog import raster_ingest
+import os
+from .config import  container_name
+from .raster_to_cog import raster_ingest, ingest_raster
 from .utils import prepare_file, gdal_open
 from .vector_to_tiles import vector_ingest
 from .azure_clients import copy_raw2working
-import json
 logger = logging.getLogger(__name__)
 
 app_router = APIRouter()
@@ -20,7 +18,7 @@ azlogger.setLevel(logging.WARNING)
 
 
 @app_router.get("/ingest1")
-async def ingest(blob_path:str=None):
+async def ingest(blob_path:str=None, token=None):
     """
     Ingest a geospatial data file potentially containing multiple layers
     into geohub
@@ -34,14 +32,28 @@ async def ingest(blob_path:str=None):
     try:
         working_blob_path = await copy_raw2working(raw_blob_path=blob_path)
     except Exception as ce:
-        raise HTTPException(status_code=500, detail=f'Could not copy {blob_path} to working directory')
+        # import traceback
+        # import io
+        # s = io.StringIO()
+        # traceback.print_exc(file=s)
+        # logger.info(s.getvalue())
+        raise HTTPException(status_code=500, detail=f'Could not copy {blob_path} to working directory. {ce}')
 
-    #2 create the datasets folder tah will hold all physical files. It does not make
+    #2 create the datasets folder that will hold all physical files. It does not make
     # sense to physically create the folder because folders are not real in azure
 
-    dataset_folder = blob_path.replace('/raw/', '/datasets') # the folder name  will contain the extension
-    gdal_open(working_blob_path)
-    #3
+    dataset_folder = blob_path.replace('/raw/', '/datasets/') # the folder name  will contain the extension
+    logger.info(dataset_folder)
+    path = f'/vsiaz/{working_blob_path}'
+    nrasters, nvectors = gdal_open(path)
+    if not (nrasters or nvectors):
+        raise HTTPException(status_code=400, detail=f'{blob_path} does not contain GIS data')
+    #3 ingest
+    if nrasters> 0:
+        ingest_raster(vsiaz_blob_path=path)
+
+
+
     return f'Finished ingesting {blob_path}'
 
 

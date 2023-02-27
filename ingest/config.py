@@ -18,6 +18,10 @@ assert azure_storage_access_key is not None, f'AZURE_ACCESS_KEY env var is not s
 connection_string = os.getenv('CONNECTION_STRING')
 assert connection_string is not None, f'CONNECTION_STRING env var is not set'
 
+os.environ['AZURE_STORAGE_ACCESS_KEY'] = azure_storage_access_key
+os.environ['AZURE_STORAGE_ACCOUNT'] = os.getenv('ACCOUNT_NAME')
+os.environ['AZURE_STORAGE_CONNECTION_STRING'] = connection_string
+
 def gdal_configs(config={}, profile="deflate"):
     """Generates a config dict and output profile for file."""
     # Format creation option (see gdalwarp `-co` option)
@@ -28,5 +32,6 @@ def gdal_configs(config={}, profile="deflate"):
     config["GDAL_NUM_THREADS"] = "ALL_CPUS"
     config["GDAL_TIFF_INTERNAL_MASK"] = True
     config["GDAL_TIFF_OVR_BLOCKSIZE"] = "128"
+    config["CPL_VSIL_USE_TEMP_FILE_FOR_RANDOM_WRITE"] = "YES" # necessary to write files to AZ u
 
     return config, output_profile

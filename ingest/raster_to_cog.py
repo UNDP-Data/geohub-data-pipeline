@@ -59,3 +59,30 @@ def raster_ingest(
             )
 
     return True
+
+
+def ingest_raster(vsiaz_blob_path=None, blockxsize=256, blockysize=256):
+    is_valid, errors, warnings = cog_validate(vsiaz_blob_path)
+    config, output_profile = gdal_configs()
+    output_profile.update(dict(blockxsize=blockxsize, blockysize=blockysize))
+    logger.info(f'using COG profile {output_profile} and config {config}')
+    _, file_name = os.path.split(vsiaz_blob_path)
+    with rasterio.open(vsiaz_blob_path, "r") as src_dataset:
+        for bandindex in src_dataset.indexes:
+            dname = vsiaz_blob_path.replace('/working/', '/datasets/')
+            fname, ext = os.path.splitext(file_name)
+            out_cog_dataset_path = f"{dname}/{fname}_band{bandindex}{ext}"
+            logger.info(f"Converting band {bandindex} from {vsiaz_blob_path.replace('/vsiaz/', '')}")
+            cog_translate(source=src_dataset,
+                          dst_path=out_cog_dataset_path,
+                          indexes=[bandindex],
+                          dst_kwargs=output_profile,
+                          config=config,
+                          web_optimized=True,
+                          forward_ns_tags=True,
+                          forward_band_tags=True,
+                          use_cog_driver=False
+                          )
+
+
+
