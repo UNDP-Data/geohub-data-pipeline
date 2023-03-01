@@ -1,9 +1,10 @@
+import json
 import os.path
 import sys
 
 import rasterio
 from rasterio.io import MemoryFile
-from rio_cogeo.cogeo import cog_translate, cog_validate
+from rio_cogeo.cogeo import cog_translate, cog_validate, cog_info
 
 from .config import gdal_configs, logging
 from .utils import prepare_filename, upload_file
@@ -61,11 +62,10 @@ def raster_ingest(
     return True
 
 
-def ingest_raster(vsiaz_blob_path=None, blockxsize=256, blockysize=256):
-    is_valid, errors, warnings = cog_validate(vsiaz_blob_path)
+def ingest_raster(vsiaz_blob_path=None):
+    #is_valid, errors, warnings = cog_validate(vsiaz_blob_path)
     config, output_profile = gdal_configs()
-    output_profile.update(dict(blockxsize=blockxsize, blockysize=blockysize))
-    logger.info(f'using COG profile {output_profile} and config {config}')
+    #logger.info(f'using COG profile {json.dumps(dict(output_profile), indent=4)} and config {json.dumps(dict(config), indent=4)}')
     _, file_name = os.path.split(vsiaz_blob_path)
     with rasterio.open(vsiaz_blob_path, "r") as src_dataset:
         for bandindex in src_dataset.indexes:
@@ -81,8 +81,10 @@ def ingest_raster(vsiaz_blob_path=None, blockxsize=256, blockysize=256):
                           web_optimized=True,
                           forward_ns_tags=True,
                           forward_band_tags=True,
-                          use_cog_driver=False
+                          use_cog_driver=True
                           )
+
+            #logger.info(json.dumps(json.loads(cog_info(out_cog_dataset_path).json()), indent=4) )
 
 
 

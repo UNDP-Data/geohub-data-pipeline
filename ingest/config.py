@@ -22,16 +22,35 @@ os.environ['AZURE_STORAGE_ACCESS_KEY'] = azure_storage_access_key
 os.environ['AZURE_STORAGE_ACCOUNT'] = os.getenv('ACCOUNT_NAME')
 os.environ['AZURE_STORAGE_CONNECTION_STRING'] = connection_string
 
-def gdal_configs(config={}, profile="deflate"):
+def gdal_configs(config={}, profile='zstd'):
     """Generates a config dict and output profile for file."""
     # Format creation option (see gdalwarp `-co` option)
-    output_profile = cog_profiles.get(profile)
-    output_profile.update(dict(BIGTIFF="IF_SAFER"))
+    '''
+                            
+        creationOptions=["BLOCKSIZE=256", "OVERVIEWS=IGNORE_EXISTING", "COMPRESS=ZSTD",     
+                                       "PREDICTOR = YES", "OVERVIEW_RESAMPLING=NEAREST", "BIGTIFF=YES",     
+                                            "TARGET_SRS=EPSG:3857", "RESAMPLING=NEAREST"])
 
-    # Dataset Open option (see gdalwarp `-oo` option)
+    '''
+    output_profile = cog_profiles.get(profile)
+
+
+
+    output_profile.update({
+                            'BIGTIFF':'YES',
+                            'blockxsize':256,
+                            'blockysize':256
+                            }
+                          )
+
+
     config["GDAL_NUM_THREADS"] = "ALL_CPUS"
+    config['RESAMPLING']='NEAREST'
+    config['OVERVIEW_RESAMPLING']='NEAREST'
+    config['PREDICTOR']='YES'
+    config['TARGET_SRS']='EPDG:3857'
     config["GDAL_TIFF_INTERNAL_MASK"] = True
-    config["GDAL_TIFF_OVR_BLOCKSIZE"] = "128"
-    config["CPL_VSIL_USE_TEMP_FILE_FOR_RANDOM_WRITE"] = "YES" # necessary to write files to AZ u
+    #config["GDAL_TIFF_OVR_BLOCKSIZE"] = "128"
+    config["CPL_VSIL_USE_TEMP_FILE_FOR_RANDOM_WRITE"] = "YES" # necessary to write files to AZ directkly using rio
 
     return config, output_profile

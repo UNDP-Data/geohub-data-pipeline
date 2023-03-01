@@ -37,10 +37,8 @@ async def copy_raw2working(raw_blob_path:str=None)->str:
             src_props = await src_blob.get_blob_properties()
 
             #lock the blob
-            logger.info(src_props.lease.state)
             if src_props.lease.state != 'leased':
                 lease = BlobLeaseClient(client=src_blob)
-
                 await lease.acquire(30)
 
             dst_blob_path = blob_path.replace('/raw/', '/working/')
@@ -56,7 +54,6 @@ async def copy_raw2working(raw_blob_path:str=None)->str:
                 await dst_blob.abort_copy(dst_props.copy.id)
                 raise Exception(f'failed to copy {raw_blob_path} tgo {dst_blob_path}')
             else:
-
                 return os.path.join(conatainer_name,dst_blob_path)
 
         except Exception as e:
@@ -66,6 +63,6 @@ async def copy_raw2working(raw_blob_path:str=None)->str:
             raise e
 
         finally:
-            if src_props.lease.state == 'leased':
+            if 'lease' in locals() and src_props.lease.state == 'leased':
                 await lease.release()
             logger.debug(f'Finished copying {raw_blob_path}')
