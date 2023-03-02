@@ -8,12 +8,12 @@ RUN apt-get update \
   python3-pip \
   && rm -rf /var/lib/apt/lists/*
 # temporary only because compiling tp takes lots of time
-#RUN git clone https://github.com/felt/tippecanoe \
-#  && cd tippecanoe \
-#  && make -j \
-#  && make install \
-#  && cd ../ \
-#  && rm -rf tippecanoe
+RUN git clone https://github.com/felt/tippecanoe \
+ && cd tippecanoe \
+ && make -j \
+ && make install \
+ && cd ../ \
+ && rm -rf tippecanoe
 
 WORKDIR /usr/src/app
 
