@@ -17,7 +17,7 @@ azlogger = logging.getLogger("azure.core.pipeline.policies.http_logging_policy")
 azlogger.setLevel(logging.WARNING)
 
 
-@app_router.get("/ingest1")
+@app_router.get("/ingest")
 async def ingest(blob_path: str, token=None):
     """
     Ingest a geospatial data file potentially containing multiple layers
