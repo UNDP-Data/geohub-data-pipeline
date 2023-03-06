@@ -4,6 +4,15 @@ import os
 import subprocess
 import tempfile
 
+from azure.storage.blob import BlobServiceClient
+
+from ingest.config import (
+    account_name,
+    azure_storage_access_key,
+    connection_string,
+    container_name,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -11,63 +20,96 @@ async def ingest_vector(vsiaz_blob_path: str, timeout=3600) -> str:
     # Split blob name on extension and use the resulting name to save the PMTiles file
     basename, _ = os.path.splitext(vsiaz_blob_path)
     vsiaz_pmtiles = basename + ".pmtiles"
-    dst_blob_path = vsiaz_pmtiles.replace("/working/", "/datasets/")
+    dst_blob_path = vsiaz_pmtiles.replace("/raw/", "/datasets/")
+    blob_service_client = BlobServiceClient.from_connection_string(connection_string)
 
+    # Get a BlobClient object for the destination blob
+    blob_client = blob_service_client.get_blob_client(
+        container=container_name, blob=dst_blob_path
+    )
     # Create a temporary file to store the GeoJSON
     with tempfile.NamedTemporaryFile(mode="w+", suffix=".geojson") as temp_geojson:
         logger.info(f"Converting {vsiaz_blob_path} to {dst_blob_path}")
         logger.info("Beginning conversion with ogr2ogr and tippecanoe")
+
         # Launch ogr2ogr subprocess to convert the vector file to GeoJSON
         ogr2ogr_cmd = [
             "ogr2ogr",
             "-f",
-            "GeoJSON",
+            "GeoJSONSeq",
+            "--config CPL_VSIL_USE_TEMP_FILE_FOR_RANDOM_WRITE",
+            "YES",
+            "--config AZURE_STORAGE_CONNECTION_STRING",
+            connection_string,
+            "--config AZURE_STORAGE_ACCOUNT",
+            account_name,
+            "--config AZURE_STORAGE_ACCESS_KEY",
+            azure_storage_access_key,
             temp_geojson.name,
             vsiaz_blob_path,
         ]
         ogr2ogr_proc = await asyncio.create_subprocess_exec(
-            *ogr2ogr_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-        )
-
-        # Launch tippecanoe subprocess to convert the GeoJSON to PMTiles
-        tippecanoe_cmd = [
-            "tippecanoe",
-            "--no-feature-limit",
-            "-zg",
-            "--simplify-only-low-zooms",
-            "--detect-shared-borders",
-            "--read-parallel",
-            "--no-tile-size-limit",
-            "--no-tile-compression",
-            "--force",
-            "-o",
-            dst_blob_path,
-            temp_geojson.name,
-        ]
-        tippecanoe_proc = await asyncio.create_subprocess_exec(
-            *tippecanoe_cmd,
+            *ogr2ogr_cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+        with tempfile.NamedTemporaryFile(mode="w+", suffix=".pmtiles") as vector_pmfile:
+            # Launch tippecanoe subprocess to convert the GeoJSON to PMTiles
+            tippecanoe_cmd = [
+                "tippecanoe",
+                "-o",
+                vector_pmfile.name,
+                "--no-feature-limit",
+                "-zg",
+                "--simplify-only-low-zooms",
+                "--detect-shared-borders",
+                "--read-parallel",
+                "--no-tile-size-limit",
+                "--no-tile-compression",
+                "--force",
+                temp_geojson.name,
+            ]
 
-        try:
-            logger.info("Waiting for ogr2ogr to complete")
-            # Wait for subprocesses to complete or timeout to expire
-            await asyncio.wait_for(
-                ogr2ogr_proc.wait(),
-                timeout=timeout,
+            tippecanoe_proc = await asyncio.create_subprocess_exec(
+                *tippecanoe_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
             )
-            logger.info("Waiting for tippecanoe to complete")
-            await asyncio.wait_for(
-                tippecanoe_proc.wait(),
-                timeout=timeout,
-            )
-        except asyncio.TimeoutError:
-            ogr2ogr_proc.kill()
-            tippecanoe_proc.kill()
-            raise subprocess.TimeoutExpired(ogr2ogr_cmd + tippecanoe_cmd, timeout)
 
-    return dst_blob_path
+            try:
+                # Write GeoJSON to ogr2ogr stdin and wait for it to complete
+                logger.info("Waiting for ogr2ogr to complete")
+                await asyncio.wait_for(
+                    ogr2ogr_proc.wait(),
+                    timeout=timeout,
+                )
+
+                # Wait for tippecanoe to complete
+                logger.info("Waiting for tippecanoe to complete")
+                await asyncio.wait_for(
+                    tippecanoe_proc.communicate(),
+                    timeout=timeout,
+                )
+                # Check if tippecanoe_proc was successful
+                if tippecanoe_proc.returncode == 0:
+                    # Write the output of tippecanoe to the blob if it exists
+                    blob_client.upload_blob(vector_pmfile.name, overwrite=True)
+
+                    return dst_blob_path
+
+                else:
+                    # Handle the case where tippecanoe_proc failed
+                    logger.error(
+                        f"Tippecanoe process failed with return code {tippecanoe_proc.returncode}"
+                    )
+                    raise Exception(
+                        f"Tippecanoe process failed with return code {tippecanoe_proc.returncode}"
+                    )
+
+            except asyncio.TimeoutError:
+                ogr2ogr_proc.kill()
+                tippecanoe_proc.kill()
+            raise asyncio.TimeoutError(ogr2ogr_cmd + tippecanoe_cmd, timeout)
 
 
 # def export_with_tippecanoe(
