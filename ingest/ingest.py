@@ -1,7 +1,7 @@
 import logging
 import os
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from ingest.azure_clients import copy_raw2working
 from ingest.config import datasets_folder, raw_folder

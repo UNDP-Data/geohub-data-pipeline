@@ -28,8 +28,6 @@ os.environ["AZURE_STORAGE_ACCESS_KEY"] = azure_storage_access_key
 os.environ["AZURE_STORAGE_ACCOUNT"] = account_name
 os.environ["AZURE_STORAGE_CONNECTION_STRING"] = connection_string
 
-gdal.SetConfigOption("AZURE_STORAGE_CONNECTION_STRING", connection_string)
-
 
 def gdal_configs(config={}, profile="zstd"):
     """Generates a config dict and output profile for file."""
