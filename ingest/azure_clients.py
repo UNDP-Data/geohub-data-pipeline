@@ -3,7 +3,7 @@ import os
 
 from azure.storage.blob.aio import BlobLeaseClient, BlobServiceClient
 
-from .config import connection_string, container_name
+from ingest.config import connection_string, container_name
 
 logger = logging.getLogger(__name__)
 

@@ -4,7 +4,7 @@ import os.path
 import rasterio
 from rio_cogeo.cogeo import cog_info, cog_translate, cog_validate
 
-from .config import gdal_configs, logging
+from ingest.config import gdal_configs, logging
 
 logger = logging.getLogger(__name__)
 

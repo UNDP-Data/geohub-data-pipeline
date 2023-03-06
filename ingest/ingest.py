@@ -3,10 +3,11 @@ import os
 
 from fastapi import APIRouter, HTTPException
 
-from .azure_clients import copy_raw2working
-from .raster_to_cog import ingest_raster
-from .utils import gdal_open
-from .vector_to_tiles import ingest_vector
+from ingest.azure_clients import copy_raw2working
+from ingest.config import datasets_folder, raw_folder
+from ingest.raster_to_cog import ingest_raster
+from ingest.utils import gdal_open
+from ingest.vector_to_tiles import ingest_vector
 
 logger = logging.getLogger(__name__)
 
@@ -25,34 +26,17 @@ async def ingest(blob_path: str, token=None):
 
     """
     logger.info(f"Starting to ingest {blob_path}")
-    # 1 copy data file to working folder
-    if not "/raw/" in blob_path:
-        return HTTPException(
-            status_code=400, detail=f"blob_path is not located in raw folder"
-        )
-    try:
-        working_blob_path = await copy_raw2working(raw_blob_path=blob_path)
-    except Exception as ce:
-        # import traceback
-        # import io
-        # s = io.StringIO()
-        # traceback.print_exc(file=s)
-        # logger.info(s.getvalue())
-        raise HTTPException(
-            status_code=500,
-            detail=f"Could not copy {blob_path} to working directory. {ce}",
-        )
-
-    # 2 create the datasets folder that will hold all physical files. It does not make
+    # 1 create the datasets folder that will hold all physical files. It does not make
     # sense to physically create the folder because folders are not real in azure
     dataset_folder = blob_path.replace(
-        "/raw/", "/datasets/"
+        f"/{raw_folder}/", f"/{datasets_folder}/"
     )  # the folder name  will contain the extension
-    logger.info(dataset_folder)
-    path = f"/vsiaz/{working_blob_path}"
+    logger.debug(dataset_folder)
+
+    path = f"/vsiaz/{blob_path}"
     nrasters, nvectors = gdal_open(path)
 
-    # 3 ingest
+    # 2 ingest
     if nrasters > 0:
         ingest_raster(vsiaz_blob_path=path)
     if nvectors > 0:
