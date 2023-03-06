@@ -37,6 +37,8 @@ async def ingest_vector(vsiaz_blob_path: str, timeout=3600) -> str:
             "ogr2ogr",
             "-f",
             "GeoJSONSeq",
+            "-lco",
+            "STREAM_OFFSET=20000000",  # Change this value as needed
             "--config CPL_VSIL_USE_TEMP_FILE_FOR_RANDOM_WRITE",
             "YES",
             "--config AZURE_STORAGE_CONNECTION_STRING",
@@ -65,6 +67,7 @@ async def ingest_vector(vsiaz_blob_path: str, timeout=3600) -> str:
                 "--detect-shared-borders",
                 "--read-parallel",
                 "--no-tile-size-limit",
+                "--no-tile-stats",
                 "--no-tile-compression",
                 "--force",
                 temp_geojson.name,
@@ -80,7 +83,7 @@ async def ingest_vector(vsiaz_blob_path: str, timeout=3600) -> str:
                 # Write GeoJSON to ogr2ogr stdin and wait for it to complete
                 logger.info("Waiting for ogr2ogr to complete")
                 await asyncio.wait_for(
-                    ogr2ogr_proc.wait(),
+                    ogr2ogr_proc.communicate(),
                     timeout=timeout,
                 )
 
@@ -100,10 +103,10 @@ async def ingest_vector(vsiaz_blob_path: str, timeout=3600) -> str:
                 else:
                     # Handle the case where tippecanoe_proc failed
                     logger.error(
-                        f"Tippecanoe process failed with return code {tippecanoe_proc.returncode}"
+                        f"Tippecanoe process failed with return code {tippecanoe_proc.returncode}, {tippecanoe_proc.stderr}"
                     )
                     raise Exception(
-                        f"Tippecanoe process failed with return code {tippecanoe_proc.returncode}"
+                        f"Tippecanoe process failed with return code {tippecanoe_proc.returncode}, {tippecanoe_proc.stderr}"
                     )
 
             except asyncio.TimeoutError:
