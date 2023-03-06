@@ -1,6 +1,7 @@
 import logging
 import os
 
+from osgeo import gdal
 from rio_cogeo.profiles import cog_profiles
 
 logging.basicConfig(
@@ -26,6 +27,8 @@ assert account_name is not None, f"ACCOUNT_NAME env var is not set"
 os.environ["AZURE_STORAGE_ACCESS_KEY"] = azure_storage_access_key
 os.environ["AZURE_STORAGE_ACCOUNT"] = account_name
 os.environ["AZURE_STORAGE_CONNECTION_STRING"] = connection_string
+
+gdal.SetConfigOption("AZURE_STORAGE_CONNECTION_STRING", connection_string)
 
 
 def gdal_configs(config={}, profile="zstd"):
