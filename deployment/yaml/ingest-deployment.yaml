@@ -29,4 +29,6 @@ spec:
               value: "$CONTAINER_NAME"
             - name: ACCOUNT_URL
               value: "$ACCOUNT_URL"
+            - name: CONNECTION_STRING
+              value: "$CONNECTION_STRING"
           imagePullPolicy: Always

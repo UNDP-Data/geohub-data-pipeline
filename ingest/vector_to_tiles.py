@@ -67,7 +67,6 @@ async def ingest_vector(vsiaz_blob_path: str, timeout=3600) -> str:
                 "--detect-shared-borders",
                 "--read-parallel",
                 "--no-tile-size-limit",
-                "--no-tile-stats",
                 "--no-tile-compression",
                 "--force",
                 temp_geojson.name,
