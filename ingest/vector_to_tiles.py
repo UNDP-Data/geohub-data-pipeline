@@ -1,10 +1,8 @@
 import asyncio
-import gc
 import logging
 import os
 import subprocess
 import tempfile
-import uuid
 
 from azure.storage.blob import BlobServiceClient
 
@@ -31,18 +29,19 @@ async def ingest_vector(vsiaz_blob_path: str, timeout=3600):
 
     await tippecanoe_export(dst_blob_path, output_geojson, timeout=timeout)
 
-    os.remove(output_geojson)
+    output_geojson.close()
     logger.info(f"Successfully removed GeoJSON file {output_geojson}")
 
 
-async def ogr2ogr_geojson(blob_path: str, timeout=3600) -> str:
-    output_geojson = os.path.join("/data/", str(uuid.uuid4()) + ".geojson")
+async def ogr2ogr_geojson(blob_path: str, timeout=3600):
+    # output_geojson = os.path.join("/data/", str(uuid.uuid4()) + ".geojson")
+    output_geojson = tempfile.NamedTemporaryFile(mode="w+", suffix=".geojson")
     # Launch ogr2ogr subprocess to convert the vector file to GeoJSON
     ogr2ogr_cmd = [
         "ogr2ogr",
         "-f",
         "GeoJSONSeq",
-        output_geojson,
+        output_geojson.name,
         blob_path,
         "-oo",
         "CPL_VSIL_USE_TEMP_FILE_FOR_RANDOM_WRITE=YES",
@@ -83,7 +82,7 @@ async def ogr2ogr_geojson(blob_path: str, timeout=3600) -> str:
     raise asyncio.TimeoutError(ogr2ogr_cmd, timeout)
 
 
-async def tippecanoe_export(dst_blob_path: str, output_geojson: str, timeout=3600):
+async def tippecanoe_export(dst_blob_path: str, output_geojson, timeout=3600):
     blob_service_client = BlobServiceClient.from_connection_string(
         connection_string,
         max_single_put_size=4 * 1024 * 1024,
@@ -109,7 +108,7 @@ async def tippecanoe_export(dst_blob_path: str, output_geojson: str, timeout=360
             "--no-tile-size-limit",
             "--no-tile-compression",
             "--force",
-            output_geojson,
+            output_geojson.name,
         ]
 
         tippecanoe_proc = await asyncio.create_subprocess_exec(
