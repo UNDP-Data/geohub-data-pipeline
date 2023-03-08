@@ -38,7 +38,7 @@ async def ingest(blob_path: str, token=None):
 
     # 2 ingest
     if nrasters > 0:
-        ingest_raster(vsiaz_blob_path=path)
+        await ingest_raster(vsiaz_blob_path=path)
     if nvectors > 0:
         await ingest_vector(vsiaz_blob_path=path)
 
