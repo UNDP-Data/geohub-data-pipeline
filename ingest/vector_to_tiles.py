@@ -4,7 +4,7 @@ import os
 import subprocess
 import tempfile
 
-from azure.storage.blob import BlobServiceClient
+from azure.storage.blob.aio import BlobServiceClient
 
 from ingest.config import (
     account_name,
@@ -20,17 +20,30 @@ async def ingest_vector(vsiaz_blob_path: str, timeout=3600):
     # Split blob name on extension and use the resulting name to save the PMTiles file
     basename, _ = os.path.splitext(vsiaz_blob_path)
     vsiaz_pmtiles = basename + ".pmtiles"
-    dst_blob_path = vsiaz_pmtiles.replace("/raw/", "/datasets/").replace(
+    user_path = vsiaz_pmtiles.replace("/raw/", "/datasets/").replace(
         "/vsiaz/userdata/", ""
     )
+    _, pm_tile_path = os.path.split(user_path)
+    out_pmtiles_path = f"{user_path}/{pm_tile_path}"
+    ingesting_pmtiles = f"{out_pmtiles_path}.ingesting"
 
+    # Upload the ingesting file to the blob
+    blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+    async with blob_service_client.get_blob_client(
+        container=container_name, blob=ingesting_pmtiles
+    ) as blob_client:
+        await blob_client.upload_blob(b"ingesting", overwrite=True)
+
+    # Convert the input file to GeoJSON and export to PMTiles
     output_geojson = await ogr2ogr_geojson(vsiaz_blob_path, timeout=timeout)
-    logger.info(f"Successfully wrote GeoJSON to {output_geojson}")
+    await tippecanoe_export(out_pmtiles_path, output_geojson, timeout=timeout)
 
-    await tippecanoe_export(dst_blob_path, output_geojson, timeout=timeout)
-
-    output_geojson.close()
-    logger.info(f"Successfully removed GeoJSON file {output_geojson}")
+    # Delete the ingesting file and log the success message
+    async with blob_service_client.get_blob_client(
+        container=container_name, blob=ingesting_pmtiles
+    ) as blob_client:
+        await blob_client.delete_blob()
+    logger.info(f"PMTiles file created: {out_pmtiles_path}. Ingesting file deleted.")
 
 
 async def ogr2ogr_geojson(blob_path: str, timeout=3600):
@@ -66,7 +79,7 @@ async def ogr2ogr_geojson(blob_path: str, timeout=3600):
         )
 
         if ogr2ogr_proc.returncode == 0:
-            logger.info(f"Successfully wrote GeoJSON to {output_geojson}")
+            logger.info(f"Successfully wrote GeoJSON to tempfile {output_geojson.name}")
             return output_geojson
         else:
             # Handle the case where tippecanoe_proc failed
@@ -82,17 +95,7 @@ async def ogr2ogr_geojson(blob_path: str, timeout=3600):
     raise asyncio.TimeoutError(ogr2ogr_cmd, timeout)
 
 
-async def tippecanoe_export(dst_blob_path: str, output_geojson, timeout=3600):
-    blob_service_client = BlobServiceClient.from_connection_string(
-        connection_string,
-        max_single_put_size=4 * 1024 * 1024,
-        max_single_get_size=4 * 1024 * 1024,
-    )
-
-    # Get a BlobClient object for the destination blob
-    blob_client = blob_service_client.get_blob_client(
-        container=container_name, blob=dst_blob_path
-    )
+async def tippecanoe_export(out_pmtiles_path: str, output_geojson, timeout=3600):
     with tempfile.NamedTemporaryFile(mode="w+", suffix=".pmtiles") as temp_pmfile:
         # Write GeoJSON to ogr2ogr stdin and wait for it to complete
         # Launch tippecanoe subprocess to convert the GeoJSON to PMTiles
@@ -126,12 +129,29 @@ async def tippecanoe_export(dst_blob_path: str, output_geojson, timeout=3600):
         )
         # Check if tippecanoe_proc was successful
         if tippecanoe_proc.returncode == 0:
-            # Write the output of tippecanoe to the blob if it exists
-            logger.info("Writing PMTiles to blob")
+            # Close the GeoJSON file
+            with output_geojson:
+                logger.info(
+                    f"Successfully removed temp GeoJSON file {output_geojson.name}"
+                )
+
             # Write the PMTiles file to the blob
+            logger.info("Writing PMTiles to blob")
+            blob_service_client = BlobServiceClient.from_connection_string(
+                connection_string
+            )
+            blob_client = blob_service_client.get_blob_client(
+                container=container_name, blob=out_pmtiles_path
+            )
+
+            # Check if the blob already exists
+            if await blob_client.exists():
+                await blob_client.delete_blob()
+
             with open(temp_pmfile.name, "rb") as upload_pmfile:
-                blob_client.upload_blob(upload_pmfile, overwrite=True)
-            logger.info(f"Successfully wrote PMTiles to {dst_blob_path}")
+                await blob_client.upload_blob(upload_pmfile, overwrite=True)
+
+            logger.info(f"Successfully wrote PMTiles to {out_pmtiles_path}")
 
             return True
 
