@@ -7,7 +7,7 @@ from azure.storage.blob.aio import BlobServiceClient
 from rio_cogeo.cogeo import cog_translate
 
 from ingest.config import gdal_configs, logging
-from ingest.utils import delete_ingesting_blob, upload_ingesting_blob
+from ingest.utils import upload_ingesting_blob
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,5 @@ async def ingest_raster(vsiaz_blob_path: str):
                 forward_band_tags=True,
                 use_cog_driver=True,
             )
-
-            await delete_ingesting_blob(out_cog_dataset_path)
-            logger.info(f"COG created: {out_cog_dataset_path}. Ingesting file deleted.")
+            logger.info(f"COG created: {out_cog_dataset_path}.")
             # logger.info(json.dumps(json.loads(cog_info(out_cog_dataset_path).json()), indent=4) )

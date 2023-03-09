@@ -27,20 +27,21 @@ async def ingest_message():
     with ServiceBusClient.from_connection_string(CONNECTION_STR) as client:
         # max_wait_time specifies how long the receiver should wait with no incoming messages before stopping receipt.
         # Default is None; to receive forever.
-        with client.get_queue_receiver(QUEUE_NAME, max_wait_time=30) as receiver:
+        with client.get_queue_receiver(QUEUE_NAME, max_wait_time=1800) as receiver:
             # Receive messages from the queue and begin ingesting the data
-            for msg in receiver:
+            messages = receiver.receive_messages(max_message_count=5)
+            for msg in messages:
                 # ServiceBusReceiver instance is a generator.
                 blob_path = str(msg).split(";")[0]
                 token = str(msg).split(";")[1]
-                logger.info(f"blob_path: {blob_path}")
-                logger.info(f"token: {token}")
-                if "/raw/" in blob_path:
+                logger.info(f"Received message: {blob_path}")
+                if f"/{raw_folder}/" in blob_path:
                     await ingest(blob_path, token)
                 else:
                     logger.info(
-                        f"Skipping {blob_path} because it is not in the raw folder"
+                        f"Skipping {blob_path} because it is not in the {raw_folder} folder"
                     )
+    logger.info("Finished receiving messages")
 
 
 async def ingest(blob_path: str, token=None):
@@ -65,4 +66,5 @@ async def ingest(blob_path: str, token=None):
         if nvectors > 0:
             await ingest_vector(vsiaz_blob_path=vsiaz_path)
 
-        return f"Finished ingesting {blob_path}"
+    logger.info(f"Finished ingesting {blob_path}")
+    return True

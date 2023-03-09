@@ -11,8 +11,10 @@ from ingest.config import (
     azure_storage_access_key,
     connection_string,
     container_name,
+    datasets_folder,
+    raw_folder,
 )
-from ingest.utils import delete_ingesting_blob, upload_ingesting_blob
+from ingest.utils import upload_ingesting_blob
 
 logger = logging.getLogger(__name__)
 
@@ -21,19 +23,20 @@ async def ingest_vector(vsiaz_blob_path: str, timeout=3600):
     # Split blob name on extension and use the resulting name to save the PMTiles file
     basename, _ = os.path.splitext(vsiaz_blob_path)
     vsiaz_pmtiles = basename + ".pmtiles"
-    user_path = vsiaz_pmtiles.replace("/raw/", "/datasets/").replace(
-        "/vsiaz/userdata/", ""
-    )
+    user_path = vsiaz_pmtiles.replace(
+        f"/{raw_folder}/", f"/{datasets_folder}/"
+    ).replace(f"/vsiaz/{container_name}/", "")
+    logger.info(f"User path: {user_path}!!")
     _, pm_tile_path = os.path.split(user_path)
     out_pmtiles_path = f"{user_path}/{pm_tile_path}"
+    logger.info(f"Output PMTiles path: {out_pmtiles_path}!!")
     await upload_ingesting_blob(out_pmtiles_path)
 
     # Convert the input file to GeoJSON and export to PMTiles
     output_geojson = await ogr2ogr_geojson(vsiaz_blob_path, timeout=timeout)
     await tippecanoe_export(out_pmtiles_path, output_geojson, timeout=timeout)
 
-    await delete_ingesting_blob(out_pmtiles_path)
-    logger.info(f"PMTiles file created: {out_pmtiles_path}. Ingesting file deleted.")
+    logger.info(f"PMTiles file created: {out_pmtiles_path}.")
 
 
 async def ogr2ogr_geojson(blob_path: str, timeout=3600):
@@ -69,7 +72,7 @@ async def ogr2ogr_geojson(blob_path: str, timeout=3600):
         )
 
         if ogr2ogr_proc.returncode == 0:
-            logger.info(f"Successfully wrote GeoJSON to tempfile {output_geojson.name}")
+            logger.info(f"Successfully wrote GeoJSON to tempfile")
             return output_geojson
         else:
             # Handle the case where tippecanoe_proc failed
@@ -121,9 +124,7 @@ async def tippecanoe_export(out_pmtiles_path: str, output_geojson, timeout=3600)
         if tippecanoe_proc.returncode == 0:
             # Close the GeoJSON file
             with output_geojson:
-                logger.info(
-                    f"Successfully removed temp GeoJSON file {output_geojson.name}"
-                )
+                logger.info(f"Successfully removed temp GeoJSON file")
 
             # Write the PMTiles file to the blob
             logger.info("Writing PMTiles to blob")
