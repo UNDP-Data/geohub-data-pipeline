@@ -1,23 +1,48 @@
 import logging
 import os
 
-from fastapi import APIRouter
+from azure.servicebus import ServiceBusClient, ServiceBusMessage
 
-from ingest.azure_clients import copy_raw2working
 from ingest.config import datasets_folder, raw_folder
 from ingest.raster_to_cog import ingest_raster
-from ingest.utils import gdal_open
+from ingest.utils import (
+    copy_raw2datasets,
+    gdal_open,
+    prepare_blob_path,
+    prepare_vsiaz_path,
+)
 from ingest.vector_to_tiles import ingest_vector
 
 logger = logging.getLogger(__name__)
 
-app_router = APIRouter()
 # silence azure logger
 azlogger = logging.getLogger("azure.core.pipeline.policies.http_logging_policy")
 azlogger.setLevel(logging.WARNING)
 
+CONNECTION_STR = os.environ["SERVICE_BUS_CONNECTION_STRING"]
+QUEUE_NAME = os.environ["SERVICE_BUS_QUEUE_NAME"]
 
-@app_router.get("/ingest")
+
+async def ingest_message():
+    with ServiceBusClient.from_connection_string(CONNECTION_STR) as client:
+        # max_wait_time specifies how long the receiver should wait with no incoming messages before stopping receipt.
+        # Default is None; to receive forever.
+        with client.get_queue_receiver(QUEUE_NAME, max_wait_time=30) as receiver:
+            # Receive messages from the queue and begin ingesting the data
+            for msg in receiver:
+                # ServiceBusReceiver instance is a generator.
+                blob_path = str(msg).split(";")[0]
+                token = str(msg).split(";")[1]
+                logger.info(f"blob_path: {blob_path}")
+                logger.info(f"token: {token}")
+                if "/raw/" in blob_path:
+                    await ingest(blob_path, token)
+                else:
+                    logger.info(
+                        f"Skipping {blob_path} because it is not in the raw folder"
+                    )
+
+
 async def ingest(blob_path: str, token=None):
     """
     Ingest a geospatial data file potentially containing multiple layers
@@ -26,20 +51,18 @@ async def ingest(blob_path: str, token=None):
 
     """
     logger.info(f"Starting to ingest {blob_path}")
-    # 1 create the datasets folder that will hold all physical files. It does not make
-    # sense to physically create the folder because folders are not real in azure
-    dataset_folder = blob_path.replace(
-        f"/{raw_folder}/", f"/{datasets_folder}/"
-    )  # the folder name  will contain the extension
-    logger.debug(dataset_folder)
+    # if the file is a pmtiles file, return without ingesting, copy to datasets
+    container_blob_path = prepare_blob_path(blob_path)
+    if blob_path.endswith(".pmtiles"):
+        await copy_raw2datasets(raw_blob_path=container_blob_path)
+    else:
+        vsiaz_path = prepare_vsiaz_path(container_blob_path)
+        nrasters, nvectors = gdal_open(vsiaz_path)
 
-    path = f"/vsiaz/{blob_path}"
-    nrasters, nvectors = gdal_open(path)
+        # 2 ingest
+        if nrasters > 0:
+            await ingest_raster(vsiaz_blob_path=vsiaz_path)
+        if nvectors > 0:
+            await ingest_vector(vsiaz_blob_path=vsiaz_path)
 
-    # 2 ingest
-    if nrasters > 0:
-        await ingest_raster(vsiaz_blob_path=path)
-    if nvectors > 0:
-        await ingest_vector(vsiaz_blob_path=path)
-
-    return f"Finished ingesting {blob_path}"
+        return f"Finished ingesting {blob_path}"

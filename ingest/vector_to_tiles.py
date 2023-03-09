@@ -12,6 +12,7 @@ from ingest.config import (
     connection_string,
     container_name,
 )
+from ingest.utils import delete_ingesting_blob, upload_ingesting_blob
 
 logger = logging.getLogger(__name__)
 
@@ -25,24 +26,13 @@ async def ingest_vector(vsiaz_blob_path: str, timeout=3600):
     )
     _, pm_tile_path = os.path.split(user_path)
     out_pmtiles_path = f"{user_path}/{pm_tile_path}"
-    ingesting_pmtiles = f"{out_pmtiles_path}.ingesting"
-
-    # Upload the ingesting file to the blob
-    blob_service_client = BlobServiceClient.from_connection_string(connection_string)
-    async with blob_service_client.get_blob_client(
-        container=container_name, blob=ingesting_pmtiles
-    ) as blob_client:
-        await blob_client.upload_blob(b"ingesting", overwrite=True)
+    await upload_ingesting_blob(out_pmtiles_path)
 
     # Convert the input file to GeoJSON and export to PMTiles
     output_geojson = await ogr2ogr_geojson(vsiaz_blob_path, timeout=timeout)
     await tippecanoe_export(out_pmtiles_path, output_geojson, timeout=timeout)
 
-    # Delete the ingesting file and log the success message
-    async with blob_service_client.get_blob_client(
-        container=container_name, blob=ingesting_pmtiles
-    ) as blob_client:
-        await blob_client.delete_blob()
+    await delete_ingesting_blob(out_pmtiles_path)
     logger.info(f"PMTiles file created: {out_pmtiles_path}. Ingesting file deleted.")
 
 
