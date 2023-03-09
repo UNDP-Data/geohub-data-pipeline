@@ -1,7 +1,6 @@
 import logging
 import os
 
-from osgeo import gdal
 from rio_cogeo.profiles import cog_profiles
 
 logging.basicConfig(

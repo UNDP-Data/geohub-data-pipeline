@@ -1,9 +1,9 @@
 import logging
 import os
 
-from azure.servicebus import ServiceBusClient, ServiceBusMessage
+from azure.servicebus import ServiceBusClient
 
-from ingest.config import datasets_folder, raw_folder
+from ingest.config import raw_folder
 from ingest.raster_to_cog import ingest_raster
 from ingest.utils import (
     copy_raw2datasets,

@@ -1,12 +1,9 @@
-import json
-import os.path
 from pathlib import Path
 
 import rasterio
-from azure.storage.blob.aio import BlobServiceClient
 from rio_cogeo.cogeo import cog_translate
 
-from ingest.config import gdal_configs, logging
+from ingest.config import datasets_folder, gdal_configs, logging, raw_folder
 from ingest.utils import upload_ingesting_blob
 
 logger = logging.getLogger(__name__)
@@ -17,7 +14,7 @@ async def ingest_raster(vsiaz_blob_path: str):
     config, output_profile = gdal_configs()
     # logger.info(f'using COG profile {json.dumps(dict(output_profile), indent=4)} and config {json.dumps(dict(config), indent=4)}')
     path = Path(vsiaz_blob_path)
-    dname = str(path).replace("/raw/", "/datasets/")
+    dname = str(path).replace(f"/{raw_folder}/", f"/{datasets_folder}/")
     fname, ext = path.name.rsplit(".", 1)
 
     with rasterio.open(vsiaz_blob_path, "r") as src_dataset:
