@@ -1,13 +1,6 @@
-from fastapi import FastAPI
-from ingest import ingest
+import asyncio
 
-app = FastAPI()
-
-# Mount routers
-app.include_router(ingest.app_router)
-
+from ingest.ingest import ingest_message
 
 if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run('main:app', host="0.0.0.0", port=8000, reload=True)
+    asyncio.run(ingest_message())
