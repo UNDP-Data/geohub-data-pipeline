@@ -29,14 +29,16 @@ Here are the configuration options:
 - `CONTAINER_NAME`
 - `ACCOUNT_URL`
 - `CONNECTION_STRING`
-
+- `SERVICE_BUS_CONNECTION_STRING`
+- `SERVICE_BUS_QUEUE_NAME`	
 ### Usage
 
 To use the API, follow these steps:
 
 1. Deploy the Docker container to your AKS cluster by running the command `deployments/scripts/install.sh`.
-2. Upload a file on the Geohub dev app, or send a file upload to the endpoint by making a POST request to the external IP address of the service.
-3. The API will determine whether the file is a raster or vector file, then convert it to a COG or PMTiles format and store it in the user's "datasets" directory in Azure.
+2. Upload a file on the Geohub dev app.
+3. A message will be sent to the service bus queue with the filepath of the uploaded file, and the user token for authentication.
+4. The API will determine whether the file is a raster or vector file, then convert it to a COG or PMTiles format and store it in the user's "datasets" directory in Azure.
 
 
 
@@ -61,7 +63,8 @@ To test the app locally, you can use Docker Compose to build and run the app in 
 - `CONTAINER_NAME`
 - `ACCOUNT_URL`
 - `CONNECTION_STRING`
-
+- `SERVICE_BUS_CONNECTION_STRING`
+- `SERVICE_BUS_QUEUE_NAME`
 
 4. Build and run the app using Docker Compose.
 
@@ -70,7 +73,7 @@ To test the app locally, you can use Docker Compose to build and run the app in 
 
     This command will build the app's Docker image and start the app in a Docker container. The `--build` flag ensures that the image is rebuilt whenever there are changes to the app's code.
 
-5. Once the container is running, you can access the api for the ingest endpoint via `http://localhost:8000/ingest`
+5. Once the container is running, it will automatically begin scanning for messages in the service bus queue. If a message is found, it will be processed and the file will be converted to a COG or PMTiles format and stored in the user's "datasets" directory in Azure.
 
 6. To stop the app, use the following command:
 
