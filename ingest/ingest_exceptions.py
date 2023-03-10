@@ -4,3 +4,7 @@ class ResourceNotFoundError(Exception):
 
 class ClientRequestError(Exception):
     pass
+
+
+class RasterUploadError(Exception):
+    pass

@@ -20,19 +20,14 @@ logger = logging.getLogger(__name__)
 
 
 async def ingest_vector(vsiaz_blob_path: str, timeout=3600):
-    # Split blob name on extension and use the resulting name to save the PMTiles file
-    basename, _ = os.path.splitext(vsiaz_blob_path)
-    vsiaz_pmtiles = basename + ".pmtiles"
-
     # Replace raw folder with datasets folder and remove vsiaz and container name prefix
     # for upload later in blob service client
-    user_path = vsiaz_pmtiles.replace(
+    user_path = vsiaz_blob_path.replace(
         f"/{raw_folder}/", f"/{datasets_folder}/"
     ).replace(f"/vsiaz/{container_name}/", "")
-
-    # Create the PMTiles file path
-    _, pm_tile_path = os.path.split(user_path)
-    out_pmtiles_path = f"{user_path}/{pm_tile_path}"
+    # Create the PMTiles file path with original raw file name as directory, and new PMTiles file name
+    pm_tile_path = os.path.splitext(os.path.basename(user_path))[0]
+    out_pmtiles_path = f"{user_path}/{pm_tile_path}.pmtiles"
 
     await upload_ingesting_blob(out_pmtiles_path)
 

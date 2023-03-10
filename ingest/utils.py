@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import os
 
 from azure.storage.blob.aio import BlobLeaseClient, BlobServiceClient
 from osgeo import gdal
@@ -96,7 +95,6 @@ async def copy_raw2datasets(raw_blob_path: str):
 async def upload_ingesting_blob(blob_path: str):
     if f"/vsiaz/{container_name}/" in blob_path:
         blob_path = blob_path.split(f"/vsiaz/{container_name}/")[-1]
-        logger.info(f"Blob path: {blob_path}")
     try:
         ingesting_blob_path = f"{blob_path}.ingesting"
         # Upload the ingesting file to the blob
@@ -112,6 +110,7 @@ async def upload_ingesting_blob(blob_path: str):
 
 
 async def upload_error_blob(blob_path: str):
+    logger.info(f"Uploading error blob for {blob_path}")
     # handle the case when paths are coming from ingest_raster
     if f"/vsiaz/{container_name}/" in blob_path:
         blob_path = blob_path.split(f"/vsiaz/{container_name}/")[-1]
