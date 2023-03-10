@@ -12,12 +12,7 @@ from ingest.config import (
     datasets_folder,
     raw_folder,
 )
-from ingest.ingest_exceptions import (
-    ClientRequestError,
-    CopyOperationError,
-    InvalidDataException,
-    ResourceNotFoundError,
-)
+from ingest.ingest_exceptions import ClientRequestError, ResourceNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -37,21 +32,22 @@ def get_dst_blob_path(blob_path: str) -> str:
     return f"{dst_blob}/{pmtile_name}"
 
 
-def gdal_open(filename):
+async def gdal_open(filename):
 
     logger.info(f"Opening {filename} with GDAL")
     gdal.SetConfigOption("AZURE_STORAGE_CONNECTION_STRING", connection_string)
     dataset = gdal.OpenEx(filename, gdal.GA_ReadOnly)
 
     if dataset is None:
-        raise InvalidDataException(f"{filename} does not contain GIS data")
+        logger.error(f"{filename} does not contain GIS data")
+        await upload_error_blob(filename)
 
     nrasters, nvectors = dataset.RasterCount, dataset.GetLayerCount()
     dataset = None
     return nrasters, nvectors
 
 
-async def copy_raw2datasets(raw_blob_path: str) -> str:
+async def copy_raw2datasets(raw_blob_path: str):
     """
     Copy raw_blob to the datasets directory
     """
@@ -86,22 +82,18 @@ async def copy_raw2datasets(raw_blob_path: str) -> str:
 
                 if dst_props.copy.status != "success":
                     await dst_blob.abort_copy(dst_props.copy.id)
-                    raise CopyOperationError(
-                        f"Failed to copy {raw_blob_path} to {dst_blob_path}"
-                    )
-                else:
-                    return os.path.join(container_name, dst_blob_path)
+                    logger.error(f"Failed to copy {raw_blob_path} to {dst_blob_path}")
+                    await upload_error_blob(dst_blob_path)
 
     except (ResourceNotFoundError, ClientRequestError) as e:
         logger.error(f"Failed to copy {raw_blob_path}: {e}")
         await upload_error_blob(raw_blob_path)
-
     except asyncio.TimeoutError:
         logger.error(f"Copy operation timed out for {raw_blob_path}")
         await upload_error_blob(raw_blob_path)
 
 
-async def upload_ingesting_blob(blob_path: str) -> bool:
+async def upload_ingesting_blob(blob_path: str):
     if f"/vsiaz/{container_name}/" in blob_path:
         blob_path = blob_path.split(f"/vsiaz/{container_name}/")[-1]
         logger.info(f"Blob path: {blob_path}")
@@ -115,12 +107,11 @@ async def upload_ingesting_blob(blob_path: str) -> bool:
             container=container_name, blob=ingesting_blob_path
         ) as blob_client:
             await blob_client.upload_blob(b"ingesting", overwrite=True)
-        return True
     except ClientRequestError as e:
         logger.error(f"Failed to upload {ingesting_blob_path}: {e}")
 
 
-async def upload_error_blob(blob_path: str) -> bool:
+async def upload_error_blob(blob_path: str):
     # handle the case when paths are coming from ingest_raster
     if f"/vsiaz/{container_name}/" in blob_path:
         blob_path = blob_path.split(f"/vsiaz/{container_name}/")[-1]
@@ -136,6 +127,5 @@ async def upload_error_blob(blob_path: str) -> bool:
             container=container_name, blob=error_blob_path
         ) as blob_client:
             await blob_client.upload_blob(b"ingesting", overwrite=True)
-        return True
     except ClientRequestError as e:
         logger.error(f"Failed to upload {error_blob_path}: {e}")

@@ -60,7 +60,7 @@ async def ingest(blob_path: str, token=None):
         await copy_raw2datasets(raw_blob_path=container_blob_path)
     else:
         vsiaz_path = prepare_vsiaz_path(container_blob_path)
-        nrasters, nvectors = gdal_open(vsiaz_path)
+        nrasters, nvectors = await gdal_open(vsiaz_path)
 
         # 2 ingest
         if nrasters > 0:
