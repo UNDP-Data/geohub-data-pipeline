@@ -37,10 +37,12 @@ async def ingest_message():
                 logger.info(f"Received message: {blob_path}")
                 if f"/{raw_folder}/" in blob_path:
                     await ingest(blob_path, token)
+                    # receiver.complete_message(msg)
                 else:
                     logger.info(
                         f"Skipping {blob_path} because it is not in the {raw_folder} folder"
                     )
+                    # receiver.complete_message(msg)
     logger.info("Finished receiving messages")
 
 

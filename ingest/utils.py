@@ -94,13 +94,11 @@ async def copy_raw2datasets(raw_blob_path: str) -> str:
 
     except (ResourceNotFoundError, ClientRequestError) as e:
         logger.error(f"Failed to copy {raw_blob_path}: {e}")
-        raise e
+        await upload_error_blob(raw_blob_path)
 
     except asyncio.TimeoutError:
         logger.error(f"Copy operation timed out for {raw_blob_path}")
-        raise CopyOperationError(
-            f"Copy operation timed out for {raw_blob_path} to {dst_blob_path}"
-        )
+        await upload_error_blob(raw_blob_path)
 
 
 async def upload_ingesting_blob(blob_path: str) -> bool:
@@ -120,4 +118,24 @@ async def upload_ingesting_blob(blob_path: str) -> bool:
         return True
     except ClientRequestError as e:
         logger.error(f"Failed to upload {ingesting_blob_path}: {e}")
-        raise e
+
+
+async def upload_error_blob(blob_path: str) -> bool:
+    # handle the case when paths are coming from ingest_raster
+    if f"/vsiaz/{container_name}/" in blob_path:
+        blob_path = blob_path.split(f"/vsiaz/{container_name}/")[-1]
+        logger.info(f"Blob path: {blob_path}")
+
+    try:
+        error_blob_path = f"{blob_path}.error"
+        # Upload the ingesting file to the blob
+        blob_service_client = BlobServiceClient.from_connection_string(
+            connection_string
+        )
+        async with blob_service_client.get_blob_client(
+            container=container_name, blob=error_blob_path
+        ) as blob_client:
+            await blob_client.upload_blob(b"ingesting", overwrite=True)
+        return True
+    except ClientRequestError as e:
+        logger.error(f"Failed to upload {error_blob_path}: {e}")

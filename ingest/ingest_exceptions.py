@@ -12,3 +12,7 @@ class ClientRequestError(Exception):
 
 class InvalidDataException(Exception):
     pass
+
+
+class RasterUploadError(Exception):
+    pass
