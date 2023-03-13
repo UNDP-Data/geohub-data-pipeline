@@ -31,6 +31,7 @@ Here are the configuration options:
 - `CONNECTION_STRING`
 - `SERVICE_BUS_CONNECTION_STRING`
 - `SERVICE_BUS_QUEUE_NAME`	
+- `MAX_MESSAGE_COUNT`
 ### Usage
 
 To use the API, follow these steps:
@@ -65,7 +66,7 @@ To test the app locally, you can use Docker Compose to build and run the app in 
 - `CONNECTION_STRING`
 - `SERVICE_BUS_CONNECTION_STRING`
 - `SERVICE_BUS_QUEUE_NAME`
-
+- `MAX_MESSAGE_COUNT`
 4. Build and run the app using Docker Compose.
 
         docker-compose up --build
