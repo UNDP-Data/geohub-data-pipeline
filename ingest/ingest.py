@@ -1,7 +1,8 @@
 import logging
 import os
+import time
 
-from azure.servicebus import ServiceBusClient
+from azure.servicebus.aio import AutoLockRenewer, ServiceBusClient
 
 from ingest.config import raw_folder
 from ingest.raster_to_cog import ingest_raster
@@ -24,12 +25,14 @@ QUEUE_NAME = os.environ["SERVICE_BUS_QUEUE_NAME"]
 
 
 async def ingest_message():
-    with ServiceBusClient.from_connection_string(CONNECTION_STR) as client:
+    async with ServiceBusClient.from_connection_string(CONNECTION_STR) as client:
         # max_wait_time specifies how long the receiver should wait with no incoming messages before stopping receipt.
         # Default is None; to receive forever.
-        with client.get_queue_receiver(QUEUE_NAME, max_wait_time=1800) as receiver:
+        async with client.get_queue_receiver(QUEUE_NAME) as receiver:
             # Receive messages from the queue and begin ingesting the data
-            messages = receiver.receive_messages(max_message_count=5)
+            messages = await receiver.receive_messages(
+                max_wait_time=5, max_message_count=2
+            )
             for msg in messages:
                 # ServiceBusReceiver instance is a generator.
                 blob_path = str(msg).split(";")[0]
@@ -37,12 +40,15 @@ async def ingest_message():
                 logger.info(f"Received message: {blob_path}")
                 if f"/{raw_folder}/" in blob_path:
                     await ingest(blob_path, token)
-                    # receiver.complete_message(msg)
+                    await receiver.complete_message(msg)
+                    logger.info(f"Completed message for: {blob_path}")
                 else:
                     logger.info(
                         f"Skipping {blob_path} because it is not in the {raw_folder} folder"
                     )
-                    # receiver.complete_message(msg)
+                    await receiver.complete_message(msg)
+                    logger.info(f"Completed message for: {blob_path}")
+
     logger.info("Finished receiving messages")
 
 
