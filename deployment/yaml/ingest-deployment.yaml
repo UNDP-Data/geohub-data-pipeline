@@ -31,6 +31,8 @@ spec:
               value: "$ACCOUNT_URL"
             - name: CONNECTION_STRING
               value: "$CONNECTION_STRING"
-            - name: MAX_MESSAGE_COUNT
-              value: "$MAX_MESSAGE_COUNT"
+            - name: SERVICE_BUS_CONNECTION_STRING
+              value: "$SERVICE_BUS_CONNECTION_STRING"
+            - name: SERVICE_BUS_QUEUE_NAME
+              value: "$SERVICE_BUS_QUEUE_NAME"
           imagePullPolicy: Always
