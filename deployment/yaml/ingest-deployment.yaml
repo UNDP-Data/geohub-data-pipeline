@@ -31,4 +31,6 @@ spec:
               value: "$ACCOUNT_URL"
             - name: CONNECTION_STRING
               value: "$CONNECTION_STRING"
+            - name: MAX_MESSAGE_COUNT
+              value: "$MAX_MESSAGE_COUNT"
           imagePullPolicy: Always

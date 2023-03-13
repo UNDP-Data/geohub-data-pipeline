@@ -22,6 +22,7 @@ azlogger.setLevel(logging.WARNING)
 
 CONNECTION_STR = os.environ["SERVICE_BUS_CONNECTION_STRING"]
 QUEUE_NAME = os.environ["SERVICE_BUS_QUEUE_NAME"]
+MAX_MESSAGE_COUNT = int(os.environ["MAX_MESSAGE_COUNT"])
 
 
 async def ingest_message():
@@ -31,7 +32,7 @@ async def ingest_message():
         async with client.get_queue_receiver(QUEUE_NAME) as receiver:
             # Receive messages from the queue and begin ingesting the data
             messages = await receiver.receive_messages(
-                max_wait_time=5, max_message_count=2
+                max_wait_time=5, max_message_count=MAX_MESSAGE_COUNT
             )
             for msg in messages:
                 # ServiceBusReceiver instance is a generator.
