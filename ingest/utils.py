@@ -97,6 +97,7 @@ async def upload_ingesting_blob(blob_path: str):
         blob_path = blob_path.split(f"/vsiaz/{container_name}/")[-1]
     try:
         ingesting_blob_path = f"{blob_path}.ingesting"
+        logger.info(f"Connection string!! {connection_string}")
         # Upload the ingesting file to the blob
         blob_service_client = BlobServiceClient.from_connection_string(
             connection_string
