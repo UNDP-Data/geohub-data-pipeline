@@ -1,13 +1,13 @@
-FROM osgeo/gdal:ubuntu-small-3.6.2
+FROM osgeo/gdal:ubuntu-small-3.6.2 AS builder
+
 ENV TZ=Etc/UTC
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
-  build-essential ca-certificates git wget zlib1g-dev libsqlite3-dev \
-  python3-pip \
+  build-essential git wget zlib1g-dev libsqlite3-dev \
   && rm -rf /var/lib/apt/lists/*
-# temporary only because compiling tp takes lots of time
+
 RUN git clone https://github.com/felt/tippecanoe \
  && cd tippecanoe \
  && make -j \
@@ -15,13 +15,23 @@ RUN git clone https://github.com/felt/tippecanoe \
  && cd ../ \
  && rm -rf tippecanoe
 
+FROM osgeo/gdal:ubuntu-small-3.6.2
+
+ENV TZ=Etc/UTC
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
 WORKDIR /usr/src/app
 
 COPY requirements.txt ./
-RUN pip3 install --no-cache-dir -r requirements.txt
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+  libffi-dev python3-pip\
+  && rm -rf /var/lib/apt/lists/* \
+  && pip3 install --no-cache-dir -r requirements.txt
+
+COPY --from=builder /usr/local/bin/tippecanoe /usr/local/bin/tippecanoe
 
 COPY main.py ./ 
 COPY ingest ./ingest
-
 
 CMD [ "python", "main.py" ]
