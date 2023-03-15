@@ -2,6 +2,7 @@ import logging
 import os
 import time
 
+from azure.servicebus import TransportType
 from azure.servicebus.aio import AutoLockRenewer, ServiceBusClient
 
 from ingest.config import raw_folder
@@ -25,27 +26,36 @@ QUEUE_NAME = os.environ["SERVICE_BUS_QUEUE_NAME"]
 
 
 async def ingest_message():
-    async with ServiceBusClient.from_connection_string(CONNECTION_STR) as client:
-        async with client.get_queue_receiver(QUEUE_NAME) as receiver:
-            # Receive messages from the queue and begin ingesting the data
-            messages = await receiver.receive_messages(
-                max_wait_time=5, max_message_count=5
-            )
-            for msg in messages:
-                # ServiceBusReceiver instance is a generator.
-                blob_path = str(msg).split(";")[0]
-                token = str(msg).split(";")[1]
-                logger.info(f"Received message: {blob_path}")
-                if f"/{raw_folder}/" in blob_path:
-                    await ingest(blob_path, token)
-                    await receiver.complete_message(msg)
-                    logger.info(f"Completed message for: {blob_path}")
-                else:
-                    logger.info(
-                        f"Skipping {blob_path} because it is not in the {raw_folder} folder"
-                    )
-                    await receiver.complete_message(msg)
-                    logger.info(f"Completed message for: {blob_path}")
+    async with ServiceBusClient.from_connection_string(
+        conn_str=CONNECTION_STR,
+        logging_enable=True,
+        transport_type=TransportType.AmqpOverWebsocket,
+    ) as client:
+        async with AutoLockRenewer(max_lock_renewal_duration=3600) as renewer:
+            async with client.get_queue_receiver(
+                QUEUE_NAME, auto_lock_renewer=renewer
+            ) as receiver:
+                # Receive messages from the queue and begin ingesting the data
+                messages = await receiver.receive_messages(
+                    max_wait_time=5, max_message_count=5
+                )
+                logger.info(f"Received {len(messages)} messages")
+
+                for msg in messages:
+                    # ServiceBusReceiver instance is a generator.
+                    blob_path = str(msg).split(";")[0]
+                    token = str(msg).split(";")[1]
+                    logger.info(f"Received message: {blob_path}")
+                    if f"/{raw_folder}/" in blob_path:
+                        await ingest(blob_path, token)
+                        await receiver.complete_message(msg)
+                        logger.info(f"Completed message for: {blob_path}")
+                    else:
+                        logger.info(
+                            f"Skipping {blob_path} because it is not in the {raw_folder} folder"
+                        )
+                        await receiver.complete_message(msg)
+                        logger.info(f"Completed message for: {blob_path}")
 
     logger.info("Finished receiving messages")
 
@@ -73,4 +83,3 @@ async def ingest(blob_path: str, token=None):
             await ingest_vector(vsiaz_blob_path=vsiaz_path)
 
     logger.info(f"Finished ingesting {blob_path}")
-    return True

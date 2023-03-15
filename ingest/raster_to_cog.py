@@ -36,6 +36,9 @@ async def ingest_raster(vsiaz_blob_path: str):
             # logger.info(json.dumps(json.loads(cog_info(out_cog_dataset_path).json()), indent=4) )
     except RasterUploadError as e:
         logger.error(
-            f"Error creating COG {out_cog_dataset_path}: {e}. Uploading error blob"
+            f"Error creating COG from {vsiaz_blob_path}: {e}. Uploading error blob"
         )
-        await upload_error_blob(out_cog_dataset_path)
+        await upload_error_blob(
+            vsiaz_blob_path,
+            f"Error creating COG from {vsiaz_blob_path}: {e}. Uploading error blob",
+        )

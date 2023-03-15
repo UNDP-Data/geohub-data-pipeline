@@ -39,7 +39,7 @@ async def gdal_open(filename):
 
     if dataset is None:
         logger.error(f"{filename} does not contain GIS data")
-        await upload_error_blob(filename)
+        await upload_error_blob(filename, f"{filename} does not contain GIS data")
 
     nrasters, nvectors = dataset.RasterCount, dataset.GetLayerCount()
     dataset = None
@@ -50,13 +50,12 @@ async def copy_raw2datasets(raw_blob_path: str):
     """
     Copy raw_blob to the datasets directory
     """
+    container_name, *rest = raw_blob_path.split("/")
+    blob_path = "/".join(rest)
     try:
         blob_service_client = BlobServiceClient.from_connection_string(
             connection_string
         )
-
-        container_name, *rest = raw_blob_path.split("/")
-        blob_path = "/".join(rest)
 
         async with blob_service_client:
             container_client = blob_service_client.get_container_client(container_name)
@@ -82,14 +81,19 @@ async def copy_raw2datasets(raw_blob_path: str):
                 if dst_props.copy.status != "success":
                     await dst_blob.abort_copy(dst_props.copy.id)
                     logger.error(f"Failed to copy {raw_blob_path} to {dst_blob_path}")
-                    await upload_error_blob(dst_blob_path)
+                    await upload_error_blob(
+                        blob_path,
+                        f"Failed to copy {raw_blob_path} to {dst_blob_path}",
+                    )
 
     except (ResourceNotFoundError, ClientRequestError) as e:
         logger.error(f"Failed to copy {raw_blob_path}: {e}")
-        await upload_error_blob(raw_blob_path)
+        await upload_error_blob(blob_path, f"Failed to copy {raw_blob_path}: {e}")
     except asyncio.TimeoutError:
         logger.error(f"Copy operation timed out for {raw_blob_path}")
-        await upload_error_blob(raw_blob_path)
+        await upload_error_blob(
+            blob_path, f"Copy operation timed out for {raw_blob_path}"
+        )
 
 
 async def upload_ingesting_blob(blob_path: str):
@@ -109,7 +113,7 @@ async def upload_ingesting_blob(blob_path: str):
         logger.error(f"Failed to upload {ingesting_blob_path}: {e}")
 
 
-async def upload_error_blob(blob_path: str):
+async def upload_error_blob(blob_path: str, error_message: str):
     logger.info(f"Uploading error blob for {blob_path}")
     # handle the case when paths are coming from ingest_raster
     if f"/vsiaz/{container_name}/" in blob_path:
@@ -125,6 +129,7 @@ async def upload_error_blob(blob_path: str):
         async with blob_service_client.get_blob_client(
             container=container_name, blob=error_blob_path
         ) as blob_client:
-            await blob_client.upload_blob(b"ingesting", overwrite=True)
+            blob_error = error_message.encode("utf-8")
+            await blob_client.upload_blob(blob_error, overwrite=True)
     except ClientRequestError as e:
-        logger.error(f"Failed to upload {error_blob_path}: {e}")
+        logger.error(f"Failed to upload error blob for {blob_path}: {e}")

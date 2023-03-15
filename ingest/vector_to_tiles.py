@@ -33,7 +33,9 @@ async def ingest_vector(vsiaz_blob_path: str, timeout=3600):
 
     # Convert the input file to GeoJSON and export to PMTiles
     output_geojson = await ogr2ogr_geojson(vsiaz_blob_path, timeout=timeout)
-    await tippecanoe_export(out_pmtiles_path, output_geojson, timeout=timeout)
+    await tippecanoe_export(
+        out_pmtiles_path, output_geojson, vsiaz_blob_path, timeout=timeout
+    )
 
     logger.info(f"PMTiles file created: {out_pmtiles_path}.")
 
@@ -78,18 +80,21 @@ async def ogr2ogr_geojson(blob_path: str, timeout=3600):
             logger.error(
                 f"Ogr2ogr process failed with return code {ogr2ogr_proc.returncode}, {ogr2ogr_proc.stderr}"
             )
-            await upload_error_blob(blob_path)
-        # raise Exception(
-        #     f"Ogr2ogr process failed with return code {ogr2ogr_proc.returncode}, {ogr2ogr_proc.stderr}"
-        # )
+            await upload_error_blob(
+                blob_path,
+                f"Ogr2ogr process failed with return code {ogr2ogr_proc.returncode}, {ogr2ogr_proc.stderr}",
+            )
     except asyncio.TimeoutError:
         ogr2ogr_proc.kill()
         logger.error(f"Ogr2ogr process timed out after {timeout} seconds")
-        await upload_error_blob(blob_path)
-    # raise asyncio.TimeoutError(ogr2ogr_cmd, timeout)
+        await upload_error_blob(
+            blob_path, f"Ogr2ogr process timed out after {timeout} seconds"
+        )
 
 
-async def tippecanoe_export(out_pmtiles_path: str, output_geojson, timeout=3600):
+async def tippecanoe_export(
+    out_pmtiles_path: str, output_geojson, blob_path: str, timeout=3600
+):
     with tempfile.NamedTemporaryFile(mode="w+", suffix=".pmtiles") as temp_pmfile:
         # Write GeoJSON to ogr2ogr stdin and wait for it to complete
         # Launch tippecanoe subprocess to convert the GeoJSON to PMTiles
@@ -145,19 +150,18 @@ async def tippecanoe_export(out_pmtiles_path: str, output_geojson, timeout=3600)
 
             logger.info(f"Successfully wrote PMTiles to {out_pmtiles_path}")
 
-            return True
-
         else:
             # Handle the case where tippecanoe_proc failed
             logger.error(
                 f"Tippecanoe process failed with return code {tippecanoe_proc.returncode}, {tippecanoe_proc.stderr}"
             )
-            # raise Exception(
-            #     f"Tippecanoe process failed with return code {tippecanoe_proc.returncode}, {tippecanoe_proc.stderr}"
-            # )
-            await upload_error_blob(out_pmtiles_path)
+            await upload_error_blob(
+                blob_path,
+                f"Tippecanoe process failed with return code {tippecanoe_proc.returncode}, {tippecanoe_proc.stderr}",
+            )
     except asyncio.TimeoutError:
         tippecanoe_proc.kill()
         logger.error(f"Tippecanoe process timed out after {timeout} seconds")
-        await upload_error_blob(out_pmtiles_path)
-    # raise asyncio.TimeoutError(tippecanoe_cmd, timeout)
+        await upload_error_blob(
+            blob_path, f"Tippecanoe process timed out after {timeout} seconds"
+        )
