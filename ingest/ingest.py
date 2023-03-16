@@ -30,34 +30,33 @@ async def ingest_message():
         conn_str=CONNECTION_STR,
         logging_enable=True,
         transport_type=TransportType.AmqpOverWebsocket,
-    ) as client:
+    ) as servicebus_client:
         async with AutoLockRenewer(max_lock_renewal_duration=3600) as renewer:
-            async with client.get_queue_receiver(
-                QUEUE_NAME, auto_lock_renewer=renewer
+            async with servicebus_client.get_queue_receiver(
+                queue_name=QUEUE_NAME
             ) as receiver:
-                # Receive messages from the queue and begin ingesting the data
-                messages = await receiver.receive_messages(
-                    max_wait_time=5, max_message_count=5
-                )
-                logger.info(f"Received {len(messages)} messages")
+                async for msg in receiver:
+                    renewer.register(receiver, msg, max_lock_renewal_duration=3600)
 
-                for msg in messages:
-                    # ServiceBusReceiver instance is a generator.
-                    blob_path = str(msg).split(";")[0]
-                    token = str(msg).split(";")[1]
-                    logger.info(f"Received message: {blob_path}")
-                    if f"/{raw_folder}/" in blob_path:
-                        await ingest(blob_path, token)
-                        await receiver.complete_message(msg)
-                        logger.info(f"Completed message for: {blob_path}")
-                    else:
-                        logger.info(
-                            f"Skipping {blob_path} because it is not in the {raw_folder} folder"
-                        )
-                        await receiver.complete_message(msg)
-                        logger.info(f"Completed message for: {blob_path}")
+                    try:
+                        # ServiceBusReceiver instance is a generator.
+                        blob_path = str(msg).split(";")[0]
+                        token = str(msg).split(";")[1]
+                        logger.info(f"Received message: {blob_path}")
+                        if f"/{raw_folder}/" in blob_path:
+                            await ingest(blob_path, token)
+                            await receiver.complete_message(msg)
+                            logger.info(f"Completed message for: {blob_path}")
+                        else:
+                            logger.info(
+                                f"Skipping {blob_path} because it is not in the {raw_folder} folder"
+                            )
+                            await receiver.complete_message(msg)
+                            logger.info(f"Completed message for: {blob_path}")
+                    except Exception as e:
+                        logger.error("Error processing message: ", str(e))
 
-    logger.info("Finished receiving messages")
+    await servicebus_client.close()
 
 
 async def ingest(blob_path: str, token=None):

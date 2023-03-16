@@ -16,7 +16,7 @@ async def ingest_raster(vsiaz_blob_path: str):
     # logger.info(f'using COG profile {json.dumps(dict(output_profile), indent=4)} and config {json.dumps(dict(config), indent=4)}')
     path = Path(vsiaz_blob_path)
     dname = str(path).replace(f"/{raw_folder}/", f"/{datasets_folder}/")
-    fname, ext = path.name.rsplit(".", 1)
+    fname, _ = path.name.rsplit(".", 1)
     try:
         with rasterio.open(vsiaz_blob_path, "r") as src_dataset:
             out_cog_dataset_path = f"{dname}/{fname}.tif"

@@ -32,17 +32,17 @@ def get_dst_blob_path(blob_path: str) -> str:
 
 
 async def gdal_open(filename):
-
     logger.info(f"Opening {filename} with GDAL")
     gdal.SetConfigOption("AZURE_STORAGE_CONNECTION_STRING", connection_string)
-    dataset = gdal.OpenEx(filename, gdal.GA_ReadOnly)
 
+    dataset = await asyncio.to_thread(gdal.OpenEx, filename, gdal.GA_ReadOnly)
     if dataset is None:
         logger.error(f"{filename} does not contain GIS data")
         await upload_error_blob(filename, f"{filename} does not contain GIS data")
 
     nrasters, nvectors = dataset.RasterCount, dataset.GetLayerCount()
     dataset = None
+
     return nrasters, nvectors
 
 
@@ -99,8 +99,8 @@ async def copy_raw2datasets(raw_blob_path: str):
 async def upload_ingesting_blob(blob_path: str):
     if f"/vsiaz/{container_name}/" in blob_path:
         blob_path = blob_path.split(f"/vsiaz/{container_name}/")[-1]
+    ingesting_blob_path = f"{blob_path}.ingesting"
     try:
-        ingesting_blob_path = f"{blob_path}.ingesting"
         # Upload the ingesting file to the blob
         blob_service_client = BlobServiceClient.from_connection_string(
             connection_string
@@ -109,27 +109,23 @@ async def upload_ingesting_blob(blob_path: str):
             container=container_name, blob=ingesting_blob_path
         ) as blob_client:
             await blob_client.upload_blob(b"ingesting", overwrite=True)
-    except ClientRequestError as e:
+    except (ClientRequestError, ResourceNotFoundError) as e:
         logger.error(f"Failed to upload {ingesting_blob_path}: {e}")
 
 
 async def upload_error_blob(blob_path: str, error_message: str):
-    logger.info(f"Uploading error blob for {blob_path}")
     # handle the case when paths are coming from ingest_raster
     if f"/vsiaz/{container_name}/" in blob_path:
         blob_path = blob_path.split(f"/vsiaz/{container_name}/")[-1]
-        logger.info(f"Blob path: {blob_path}")
-
+    error_blob_path = f"{blob_path}.error"
     try:
-        error_blob_path = f"{blob_path}.error"
-        # Upload the ingesting file to the blob
+        # Upload the error message as a blob
         blob_service_client = BlobServiceClient.from_connection_string(
             connection_string
         )
         async with blob_service_client.get_blob_client(
             container=container_name, blob=error_blob_path
         ) as blob_client:
-            blob_error = error_message.encode("utf-8")
-            await blob_client.upload_blob(blob_error, overwrite=True)
-    except ClientRequestError as e:
-        logger.error(f"Failed to upload error blob for {blob_path}: {e}")
+            await blob_client.upload_blob(error_message.encode("utf-8"), overwrite=True)
+    except (ClientRequestError, ResourceNotFoundError) as e:
+        logger.error(f"Failed to upload {error_blob_path}: {e}")
