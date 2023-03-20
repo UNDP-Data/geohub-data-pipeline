@@ -1,6 +1,7 @@
 import asyncio
 import logging
-
+import os.path
+from urllib.parse import urlparse
 from azure.storage.blob.aio import BlobLeaseClient, BlobServiceClient
 from osgeo import gdal
 
@@ -11,18 +12,33 @@ from ingest.config import (
     datasets_folder,
     raw_folder,
 )
+from ingest.config import GDAL_ARCHIVE_FORMATS
 from ingest.ingest_exceptions import ClientRequestError, ResourceNotFoundError
 
 logger = logging.getLogger(__name__)
 
 
 def prepare_blob_path(blob_path: str) -> str:
-    container_blob_path = blob_path.split(account_url)[1]
-    return container_blob_path
+    """
+    Safely xtract relative path of the blob from its url using urllib
+    """
+    return urlparse(blob_path).path[1:] # 1 is to exclude the start slash/path separator
+    # because the os.path.join disregards any
 
 
 def prepare_vsiaz_path(blob_path: str) -> str:
-    return f"/vsiaz/{blob_path}"
+    """
+    Compose the relative path of a blob so is can be opened by GDAL
+    """
+    _, ext = os.path.splitext(blob_path)
+
+    if ext in GDAL_ARCHIVE_FORMATS:
+        arch_driver = GDAL_ARCHIVE_FORMATS[ext]
+        prefix = f'/{arch_driver}/vsiaz'
+    else:
+        prefix = '/vsiaz'
+
+    return os.path.join(prefix, blob_path)
 
 
 def get_dst_blob_path(blob_path: str) -> str:
@@ -33,9 +49,10 @@ def get_dst_blob_path(blob_path: str) -> str:
 
 async def gdal_open(filename):
     logger.info(f"Opening {filename} with GDAL")
-    gdal.SetConfigOption("AZURE_STORAGE_CONNECTION_STRING", connection_string)
+    #gdal.SetConfigOption("AZURE_STORAGE_CONNECTION_STRING", connection_string)
+    dataset = gdal.OpenEx(filename, gdal.GA_ReadOnly)
 
-    dataset = await asyncio.to_thread(gdal.OpenEx, filename, gdal.GA_ReadOnly)
+    #dataset = await asyncio.to_thread(gdal.OpenEx, filename, gdal.GA_ReadOnly)
     if dataset is None:
         logger.error(f"{filename} does not contain GIS data")
         await upload_error_blob(filename, f"{filename} does not contain GIS data")
@@ -97,8 +114,8 @@ async def copy_raw2datasets(raw_blob_path: str):
 
 
 async def upload_ingesting_blob(blob_path: str):
-    if f"/vsiaz/{container_name}/" in blob_path:
-        blob_path = blob_path.split(f"/vsiaz/{container_name}/")[-1]
+    if f"/{container_name}/" in blob_path:
+        blob_path = blob_path.split(f"/{container_name}/")[-1]
     ingesting_blob_path = f"{blob_path}.ingesting"
     try:
         # Upload the ingesting file to the blob
@@ -113,10 +130,10 @@ async def upload_ingesting_blob(blob_path: str):
         logger.error(f"Failed to upload {ingesting_blob_path}: {e}")
 
 
-async def upload_error_blob(blob_path: str, error_message: str):
+async def upload_error_blob(blob_path:str=None, error_message:str=None):
     # handle the case when paths are coming from ingest_raster
-    if f"/vsiaz/{container_name}/" in blob_path:
-        blob_path = blob_path.split(f"/vsiaz/{container_name}/")[-1]
+    if f"/{container_name}/" in blob_path:
+        blob_path = blob_path.split(f"/{container_name}/")[-1]
     error_blob_path = f"{blob_path}.error"
     try:
         # Upload the error message as a blob

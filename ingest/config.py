@@ -27,7 +27,45 @@ os.environ["AZURE_STORAGE_ACCESS_KEY"] = azure_storage_access_key
 os.environ["AZURE_STORAGE_ACCOUNT"] = account_name
 os.environ["AZURE_STORAGE_CONNECTION_STRING"] = connection_string
 
+GDAL_ARCHIVE_FORMATS = {
+    '.zip': 'vsizip',
+    '.gz': 'vsigzip',
+    '.tar': 'vsitar',
+    '.tgz': 'vsitar',
+    '.7z': 'vsi7z',
+    '.rar':'vsirar'
+}
 
+
+
+'''
+GeoTIFF (.tif, .tiff)
+
+NetCDF (.nc)
+
+Arc/Info ASCII Grid File (.aig, .asc, .sgr, .grd)
+
+Erdas Imagine (.raw, .bl)
+
+ESRI Shapefile (zipped) (.zip)
+
+GeoJSON (.geojson)
+
+PMTILES (.pmtiles)
+
+MBTILES (.mbtiles)
+
+ESRI File Geodatabase (OpenFileGDB) (.gdb)
+
+ESRI File Geodatabase (FileGDB) (.gdb)
+
+ESRI Personal GeoDatabase (.mdb)
+
+GeoPackage (.gpkg)
+
+'''
+
+ALLOWED_GDAL_FORMATS = ['.tif', '.tiff', '.gtif', '.gtiff', '.nc', '.nc4', '.aig', '.asc', '.sgr', '.grd']
 def gdal_configs(config={}, profile="zstd"):
     """Generates a config dict and output profile for file."""
     # Format creation option (see gdalwarp `-co` option)

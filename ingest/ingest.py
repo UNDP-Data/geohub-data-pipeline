@@ -1,6 +1,6 @@
+import json
 import logging
 import os
-import time
 
 from azure.servicebus import TransportType
 from azure.servicebus.aio import AutoLockRenewer, ServiceBusClient
@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 # silence azure logger
 azlogger = logging.getLogger("azure.core.pipeline.policies.http_logging_policy")
 azlogger.setLevel(logging.WARNING)
+sblogger = logging.getLogger("uamqp")
+sblogger.setLevel(logging.WARNING)
 
 CONNECTION_STR = os.environ["SERVICE_BUS_CONNECTION_STRING"]
 QUEUE_NAME = os.environ["SERVICE_BUS_QUEUE_NAME"]
@@ -40,9 +42,11 @@ async def ingest_message():
 
                     try:
                         # ServiceBusReceiver instance is a generator.
-                        blob_path = str(msg).split(";")[0]
-                        token = str(msg).split(";")[1]
-                        logger.info(f"Received message: {blob_path}")
+                        # the message has double quotes, it is better to sue JSON parser to be on the safe side
+                        msg_str = json.loads(str(msg))
+                        blob_path, token = msg_str.split(";")
+                        logger.info(f"Received blob: {blob_path} in message and token {token}")
+
                         if f"/{raw_folder}/" in blob_path:
                             await ingest(blob_path, token)
                             await receiver.complete_message(msg)
@@ -55,8 +59,9 @@ async def ingest_message():
                             logger.info(f"Completed message for: {blob_path}")
                     except Exception as e:
                         logger.error("Error processing message: ", str(e))
+                        raise
 
-    await servicebus_client.close()
+    #await servicebus_client.close()
 
 
 async def ingest(blob_path: str, token=None):
@@ -69,6 +74,7 @@ async def ingest(blob_path: str, token=None):
     logger.info(f"Starting to ingest {blob_path}")
     # if the file is a pmtiles file, return without ingesting, copy to datasets
     container_blob_path = prepare_blob_path(blob_path)
+
     if blob_path.endswith(".pmtiles"):
         await copy_raw2datasets(raw_blob_path=container_blob_path)
     else:
@@ -80,5 +86,7 @@ async def ingest(blob_path: str, token=None):
             await ingest_raster(vsiaz_blob_path=vsiaz_path)
         if nvectors > 0:
             await ingest_vector(vsiaz_blob_path=vsiaz_path)
+        #csv
+
 
     logger.info(f"Finished ingesting {blob_path}")
