@@ -7,7 +7,7 @@ import logging
 cfg = dotenv_values('../../.env')
 CONNECTION_STR = cfg['SERVICE_BUS_CONNECTION_STRING_DEV']
 QUEUE_NAME='data-upload-dev'
-MAX_SLEEP_SECS = 3600
+MAX_SLEEP_SECS = 3
 
 async def random_sleep():
     sleep_secs = random.randrange(0,MAX_SLEEP_SECS,1)

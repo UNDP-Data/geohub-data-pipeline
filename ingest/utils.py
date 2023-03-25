@@ -4,7 +4,7 @@ import os.path
 from urllib.parse import urlparse
 from azure.storage.blob.aio import BlobLeaseClient, BlobServiceClient
 from osgeo import gdal
-
+import datetime
 from ingest.config import (
     account_url,
     connection_string,
@@ -146,3 +146,26 @@ async def upload_error_blob(blob_path:str=None, error_message:str=None):
             await blob_client.upload_blob(error_message.encode("utf-8"), overwrite=True)
     except (ClientRequestError, ResourceNotFoundError) as e:
         logger.error(f"Failed to upload {error_blob_path}: {e}")
+
+async def handle_lock(receiver=None, message=None):
+
+    """
+    Renew  the AutolockRenewer lock registered on a servicebus message.
+    Long running jobs and with unpredictable execution duration  pose few chalenges.
+    First, the network can be disconnected or face other issues and second the renewal operation
+    can also fail or take a bit longer. For this reason  to keep an AzureService bus locked
+    it is necessary to renew the lock in an infinite loop
+    @param receiver, instance of Azure ServiceBusReceiver
+    @param message,instance or Azure ServiceBusReceivedMessage
+
+    @return: None
+    """
+    while True:
+        lu = message.locked_until_utc
+        n = datetime.datetime.utcnow()
+        d = int((lu.replace(tzinfo=n.tzinfo)-n).total_seconds())
+        #logger.info(f'locked until {lu} utc now is {n} lock expired {message._lock_expired} and will expire in  {d}')
+        if d < 10:
+            logger.info('renewing lock')
+            await receiver.renew_message_lock(message=message,)
+        await asyncio.sleep(1)

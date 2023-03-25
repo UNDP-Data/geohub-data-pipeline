@@ -10,10 +10,10 @@ import logging
 cfg = dotenv_values('../../.env')
 CONNECTION_STR = cfg['SERVICE_BUS_CONNECTION_STRING_DEV']
 QUEUE_NAME='data-upload-dev'
-MAX_SLEEP_SECS = 300
+MAX_SLEEP_SECS = 30
 LOCK_SECS = 10
 TZ = datetime.tzinfo
-RUN_FOREVER = True
+RUN_FOREVER = False
 
 async def random_sleep(msg=None):
 
@@ -69,7 +69,7 @@ async def consume():
                                 except Exception as e:
                                     for pf in pending:
                                         pf.cancel()
-                                    err = ingest_future.exception()
+                                    #err = ingest_future.exception()
                                     with StringIO() as m:
                                         print_exc(file=m)
                                         em = m.getvalue()
