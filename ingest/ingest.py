@@ -109,7 +109,7 @@ async def ingest_message():
                                                     file=m
                                                 )  # exc is extracted using system.exc_info
                                                 error_message = m.getvalue()
-                                                logger.error(m)
+                                                logger.error(e, m)
                                             logger.info(
                                                 f"Pushing {msg} to dead letter sub-queue"
                                             )

@@ -11,7 +11,7 @@ spec:
   triggers:
   - type: azure-servicebus
     metadata:
-      queueName: data-upload-dev
+      queueName: data-upload
       namespace: undpgeohub
       messageCount: "5" # default 5
       activationMessageCount: "1"
