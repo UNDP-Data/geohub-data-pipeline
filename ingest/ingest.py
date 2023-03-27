@@ -9,15 +9,16 @@ from azure.servicebus import TransportType
 from azure.servicebus.aio import AutoLockRenewer, ServiceBusClient
 
 from ingest.config import raw_folder
-from ingest.raster_to_cog import ingest_raster
+from ingest.raster_to_cog import ingest_raster, ingest_raster_sync
 from ingest.utils import (
     copy_raw2datasets,
-    gdal_open,
+    gdal_open_async,
+    gdal_open_sync,
     handle_lock,
     prepare_blob_path,
     prepare_vsiaz_path,
 )
-from ingest.vector_to_tiles import ingest_vector
+from ingest.vector_to_tiles import ingest_vector, ingest_vector_sync
 
 logger = logging.getLogger(__name__)
 
@@ -48,12 +49,15 @@ async def ingest_message():
 
                     if not received_msgs:
                         logger.info(f"No messages to process")
+                        break
                     for msg in received_msgs:
                         try:
                             msg_str = json.loads(str(msg))
                             blob_path, token = msg_str.split(";")
+                            if not 'USA_POPDEN' in blob_path:
+                                continue
                             logger.info(
-                                f"Received blob: {blob_path} in message and token {token}"
+                                f"Received blob: {blob_path} from queue"
                             )
                             async with AutoLockRenewer() as auto_lock_renewer:
                                 auto_lock_renewer.register(
@@ -83,7 +87,7 @@ async def ingest_message():
 
                                     """
                                     ingest_task = asyncio.ensure_future(
-                                        ingest(blob_path, token)
+                                        asyncio.to_thread(sync_ingest, blob_path, token)
                                     )
                                     bg = asyncio.ensure_future(
                                         handle_lock(receiver=receiver, message=msg)
@@ -136,44 +140,31 @@ async def ingest_message():
                             )
                             continue
 
+def sync_ingest(blob_path: str, token=None):
+    """
+    Ingest a geospatial data file potentially containing multiple layers
+    into geohub
+    Follows exactly https://github.com/UNDP-Data/geohub/discussions/545
 
-async def ingest_message_old():
-    async with ServiceBusClient.from_connection_string(
-        conn_str=CONNECTION_STR,
-        logging_enable=True,
-        transport_type=TransportType.AmqpOverWebsocket,
-    ) as servicebus_client:
-        async with AutoLockRenewer(max_lock_renewal_duration=3600) as renewer:
-            async with servicebus_client.get_queue_receiver(
-                queue_name=QUEUE_NAME
-            ) as receiver:
-                async for msg in receiver:
-                    renewer.register(receiver, msg, max_lock_renewal_duration=3600)
+    """
+    logger.info(f"Starting to ingest {blob_path}")
+    # if the file is a pmtiles file, return without ingesting, copy to datasets
+    container_blob_path = prepare_blob_path(blob_path)
 
-                    try:
-                        # ServiceBusReceiver instance is a generator.
-                        # the message has double quotes, it is better to sue JSON parser to be on the safe side
-                        msg_str = json.loads(str(msg))
-                        blob_path, token = msg_str.split(";")
-                        logger.info(
-                            f"Received blob: {blob_path} in message and token {token}"
-                        )
+    if blob_path.endswith(".pmtiles"):
+        asyncio.run(copy_raw2datasets(raw_blob_path=container_blob_path))
+    else:
+        vsiaz_path = prepare_vsiaz_path(container_blob_path)
+        nrasters, nvectors = gdal_open_sync(vsiaz_path)
 
-                        if f"/{raw_folder}/" in blob_path:
-                            await ingest(blob_path, token)
-                            await receiver.complete_message(msg)
-                            logger.info(f"Completed message for: {blob_path}")
-                        else:
-                            logger.info(
-                                f"Skipping {blob_path} because it is not in the {raw_folder} folder"
-                            )
-                            await receiver.complete_message(msg)
-                            logger.info(f"Completed message for: {blob_path}")
-                    except Exception as e:
-                        logger.error("Error processing message: ", str(e))
-                        raise
+        # 2 ingest
+        if nrasters > 0:
+            ingest_raster_sync(vsiaz_blob_path=vsiaz_path)
+        if nvectors > 0:
+            ingest_vector_sync(vsiaz_blob_path=vsiaz_path)
+        # csv
 
-    # await servicebus_client.close()
+    logger.info(f"Finished ingesting {blob_path}")
 
 
 async def ingest(blob_path: str, token=None):
@@ -191,7 +182,7 @@ async def ingest(blob_path: str, token=None):
         await copy_raw2datasets(raw_blob_path=container_blob_path)
     else:
         vsiaz_path = prepare_vsiaz_path(container_blob_path)
-        nrasters, nvectors = await gdal_open(vsiaz_path)
+        nrasters, nvectors = await gdal_open_async(vsiaz_path)
 
         # 2 ingest
         if nrasters > 0:

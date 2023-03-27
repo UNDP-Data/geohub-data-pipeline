@@ -1,16 +1,19 @@
 import datetime
+import time
+import os
 import os.path
 from io import StringIO
-from dotenv import dotenv_values
+# from dotenv import dotenv_values
 from azure.servicebus.aio import ServiceBusClient, AutoLockRenewer
 from traceback import print_exc
 import random
 import asyncio
 import logging
-cfg = dotenv_values('../../.env')
-CONNECTION_STR = cfg['SERVICE_BUS_CONNECTION_STRING_DEV']
+# cfg = dotenv_values('../../.env')
+
+CONNECTION_STR = os.getenv('SERVICE_BUS_CONNECTION_STRING_DEV')
 QUEUE_NAME='data-upload-dev'
-MAX_SLEEP_SECS = 30
+MAX_SLEEP_SECS = 300
 LOCK_SECS = 10
 TZ = datetime.tzinfo
 RUN_FOREVER = False
@@ -21,6 +24,14 @@ async def random_sleep(msg=None):
     sleep_secs = random.randrange(0,MAX_SLEEP_SECS,1)
     logger.info(f'Going to sleep for {sleep_secs} seconds')
     await asyncio.sleep(sleep_secs)
+    if '4' in str(msg):raise Exception('Late planned error')
+    return  sleep_secs
+
+def random_sleep_sync(msg=None):
+    if '3' in str(msg):raise Exception('Early planned error')
+    sleep_secs = random.randrange(0,MAX_SLEEP_SECS,1)
+    logger.info(f'Going to sleep for {sleep_secs} seconds')
+    time.sleep(sleep_secs)
     if '4' in str(msg):raise Exception('Late planned error')
     return  sleep_secs
 
@@ -36,7 +47,6 @@ async def handle_lock(receiver=None, message=None, lock_renew_secs = LOCK_SECS):
         await asyncio.sleep(1)
 
 async def consume():
-
     async with ServiceBusClient.from_connection_string(conn_str=CONNECTION_STR, logging_enable=True) as servicebus_client:
         async with servicebus_client.get_queue_receiver(queue_name=QUEUE_NAME, prefetch_count=0,) as receiver: #get one message without caching
             async with receiver:
@@ -54,8 +64,8 @@ async def consume():
                         logger.info(f'Going to lock message {str(msg)} and auto-renew every {LOCK_SECS} secs')
                         async with AutoLockRenewer() as auto_lock_renewer:
                             auto_lock_renewer.register(receiver=receiver, renewable=msg,max_lock_renewal_duration=LOCK_SECS)
-                            #bg = asyncio.ensure_future(loop.run_in_executor(None,handle_lock, receiver, msg, LOCK_SECS))
-                            job = asyncio.ensure_future(random_sleep(msg=msg))
+
+                            job = asyncio.ensure_future(asyncio.to_thread( random_sleep_sync, msg=msg))
                             bg = asyncio.ensure_future(handle_lock(receiver=receiver,message=msg ))
 
                             done, pending = await asyncio.wait([bg, job],return_when=asyncio.FIRST_COMPLETED, timeout=36000)

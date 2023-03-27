@@ -19,6 +19,30 @@ from ingest.utils import upload_error_blob, upload_ingesting_blob
 logger = logging.getLogger(__name__)
 
 
+def ingest_vector_sync(vsiaz_blob_path: str, timeout=3600):
+    # Replace raw folder with datasets folder and remove vsiaz and container name prefix
+    # for upload later in blob service client
+    user_path = vsiaz_blob_path.replace(
+        f"/{raw_folder}/", f"/{datasets_folder}/"
+    ).replace(f"/vsiaz/{container_name}/", "")
+    # Create the PMTiles file path with original raw file name as directory, and new PMTiles file name
+    pm_tile_path = os.path.splitext(os.path.basename(user_path))[0]
+    out_pmtiles_path = f"{user_path}/{pm_tile_path}.pmtiles"
+
+    asyncio.run(upload_ingesting_blob(out_pmtiles_path))
+
+    # Convert the input file to GeoJSON and export to PMTiles
+    output_geojson = asyncio.run(ogr2ogr_geojson(vsiaz_blob_path, timeout=timeout))
+    asyncio.run(
+         tippecanoe_export(
+            out_pmtiles_path, output_geojson, vsiaz_blob_path, timeout=timeout
+        )
+    )
+
+
+    logger.info(f"PMTiles file created: {out_pmtiles_path}.")
+
+
 async def ingest_vector(vsiaz_blob_path: str, timeout=3600):
     # Replace raw folder with datasets folder and remove vsiaz and container name prefix
     # for upload later in blob service client
