@@ -1,14 +1,13 @@
+import json
 from pathlib import Path
+
 import rasterio
+from rio_cogeo import cog_info
 from rio_cogeo.cogeo import cog_translate
 
 from ingest.config import datasets_folder, gdal_configs, logging, raw_folder
 from ingest.ingest_exceptions import RasterUploadError
 from ingest.utils import upload_error_blob, upload_ingesting_blob
-
-import json
-from rio_cogeo import cog_info
-
 
 logger = logging.getLogger(__name__)
 
@@ -40,21 +39,22 @@ async def ingest_raster(vsiaz_blob_path: str):
                 logger.info(f"COG created: {out_cog_dataset_path}.")
             else:
                 for bandindex in src_dataset.indexes:
-                    out_cog_dataset_path = f'{dname}/{fname}_band{bandindex}.tif'
+                    out_cog_dataset_path = f"{dname}/{fname}_band{bandindex}.tif"
                     logger.info(f"Converting band {bandindex} from {vsiaz_blob_path}")
-                    cog_translate(source=src_dataset,
-                                  dst_path=out_cog_dataset_path,
-                                  indexes=[bandindex],
-                                  dst_kwargs=output_profile,
-                                  config=config,
-                                  web_optimized=True,
-                                  forward_ns_tags=True,
-                                  forward_band_tags=True,
-                                  use_cog_driver=False
-                                  )
+                    cog_translate(
+                        source=src_dataset,
+                        dst_path=out_cog_dataset_path,
+                        indexes=[bandindex],
+                        dst_kwargs=output_profile,
+                        config=config,
+                        web_optimized=True,
+                        forward_ns_tags=True,
+                        forward_band_tags=True,
+                        use_cog_driver=False,
+                    )
 
-            logger.info(json.dumps(json.loads(cog_info(out_cog_dataset_path).json()), indent=4) )
-            exit()
+            # logger.info(json.dumps(json.loads(cog_info(out_cog_dataset_path).json()), indent=4) )
+            # exit()
     except RasterUploadError as e:
         logger.error(
             f"Error creating COG from {vsiaz_blob_path}: {e}. Uploading error blob"
