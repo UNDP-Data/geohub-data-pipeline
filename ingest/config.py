@@ -28,17 +28,16 @@ os.environ["AZURE_STORAGE_ACCOUNT"] = account_name
 os.environ["AZURE_STORAGE_CONNECTION_STRING"] = connection_string
 
 GDAL_ARCHIVE_FORMATS = {
-    '.zip': 'vsizip',
-    '.gz': 'vsigzip',
-    '.tar': 'vsitar',
-    '.tgz': 'vsitar',
-    '.7z': 'vsi7z',
-    '.rar':'vsirar'
+    ".zip": "vsizip",
+    ".gz": "vsigzip",
+    ".tar": "vsitar",
+    ".tgz": "vsitar",
+    ".7z": "vsi7z",
+    ".rar": "vsirar",
 }
 
 
-
-'''
+"""
 GeoTIFF (.tif, .tiff)
 
 NetCDF (.nc)
@@ -63,9 +62,22 @@ ESRI Personal GeoDatabase (.mdb)
 
 GeoPackage (.gpkg)
 
-'''
+"""
 
-ALLOWED_GDAL_FORMATS = ['.tif', '.tiff', '.gtif', '.gtiff', '.nc', '.nc4', '.aig', '.asc', '.sgr', '.grd']
+ALLOWED_GDAL_FORMATS = [
+    ".tif",
+    ".tiff",
+    ".gtif",
+    ".gtiff",
+    ".nc",
+    ".nc4",
+    ".aig",
+    ".asc",
+    ".sgr",
+    ".grd",
+]
+
+
 def gdal_configs(config={}, profile="zstd"):
     """Generates a config dict and output profile for file."""
     # Format creation option (see gdalwarp `-co` option)
@@ -82,6 +94,7 @@ def gdal_configs(config={}, profile="zstd"):
 
     config["GDAL_NUM_THREADS"] = "ALL_CPUS"
     config["RESAMPLING"] = "NEAREST"
+    config["OVERVIEWS"] = "IGNORE_EXISTING"
     config["OVERVIEW_RESAMPLING"] = "NEAREST"
     config["PREDICTOR"] = "YES"
     config["TARGET_SRS"] = "EPSG:3857"
