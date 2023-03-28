@@ -180,4 +180,4 @@ if __name__ == '__main__':
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
     ingest_raster()
-    #test_gdal_translate()
+    test_gdal_translate()
