@@ -47,7 +47,7 @@ def get_dst_blob_path(blob_path: str) -> str:
     return f"{dst_blob}/{pmtile_name}"
 
 
-async def gdal_open(filename):
+async def gdal_open_async(filename):
     logger.info(f"Opening {filename} with GDAL")
     #gdal.SetConfigOption("AZURE_STORAGE_CONNECTION_STRING", connection_string)
     dataset = gdal.OpenEx(filename, gdal.GA_ReadOnly)
@@ -57,11 +57,25 @@ async def gdal_open(filename):
         logger.error(f"{filename} does not contain GIS data")
         await upload_error_blob(filename, f"{filename} does not contain GIS data")
 
+
     nrasters, nvectors = dataset.RasterCount, dataset.GetLayerCount()
     dataset = None
 
     return nrasters, nvectors
 
+def gdal_open_sync(filename):
+
+    logger.info(f"Opening {filename} with GDAL")
+    dataset = gdal.OpenEx(filename, gdal.GA_ReadOnly)
+
+    if dataset is None:
+        logger.error(f"{filename} does not contain GIS data")
+        loop = asyncio.get_running_loop()
+
+        loop.run_in_executor(None, upload_error_blob,filename, f"{filename} does not contain GIS data")
+    nrasters, nvectors = dataset.RasterCount, dataset.GetLayerCount()
+    dataset = None
+    return nrasters, nvectors
 
 async def copy_raw2datasets(raw_blob_path: str):
     """
@@ -119,13 +133,11 @@ async def upload_ingesting_blob(blob_path: str):
     ingesting_blob_path = f"{blob_path}.ingesting"
     try:
         # Upload the ingesting file to the blob
-        blob_service_client = BlobServiceClient.from_connection_string(
-            connection_string
-        )
-        async with blob_service_client.get_blob_client(
-            container=container_name, blob=ingesting_blob_path
-        ) as blob_client:
-            await blob_client.upload_blob(b"ingesting", overwrite=True)
+        async with BlobServiceClient.from_connection_string(connection_string) as blob_service_client:
+            async with blob_service_client.get_blob_client(
+                container=container_name, blob=ingesting_blob_path
+            ) as blob_client:
+                await blob_client.upload_blob(b"ingesting", overwrite=True)
     except (ClientRequestError, ResourceNotFoundError) as e:
         logger.error(f"Failed to upload {ingesting_blob_path}: {e}")
 
@@ -137,13 +149,11 @@ async def upload_error_blob(blob_path:str=None, error_message:str=None):
     error_blob_path = f"{blob_path}.error"
     try:
         # Upload the error message as a blob
-        blob_service_client = BlobServiceClient.from_connection_string(
-            connection_string
-        )
-        async with blob_service_client.get_blob_client(
-            container=container_name, blob=error_blob_path
-        ) as blob_client:
-            await blob_client.upload_blob(error_message.encode("utf-8"), overwrite=True)
+        async with BlobServiceClient.from_connection_string(connection_string) as blob_service_client:
+            async with blob_service_client.get_blob_client(
+                container=container_name, blob=error_blob_path
+            ) as blob_client:
+                await blob_client.upload_blob(error_message.encode("utf-8"), overwrite=True)
     except (ClientRequestError, ResourceNotFoundError) as e:
         logger.error(f"Failed to upload {error_blob_path}: {e}")
 
@@ -164,7 +174,7 @@ async def handle_lock(receiver=None, message=None):
         lu = message.locked_until_utc
         n = datetime.datetime.utcnow()
         d = int((lu.replace(tzinfo=n.tzinfo)-n).total_seconds())
-        #logger.info(f'locked until {lu} utc now is {n} lock expired {message._lock_expired} and will expire in  {d}')
+        logger.info(f'locked until {lu} utc now is {n} lock expired {message._lock_expired} and will expire in  {d}')
         if d < 10:
             logger.info('renewing lock')
             await receiver.renew_message_lock(message=message,)
