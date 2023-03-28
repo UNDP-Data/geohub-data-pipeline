@@ -54,8 +54,6 @@ async def ingest_message():
                         try:
                             msg_str = json.loads(str(msg))
                             blob_path, token = msg_str.split(";")
-                            if not 'USA_POPDEN' in blob_path:
-                                continue
                             logger.info(
                                 f"Received blob: {blob_path} from queue"
                             )
