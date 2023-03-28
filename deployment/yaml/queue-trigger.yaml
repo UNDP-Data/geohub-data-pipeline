@@ -8,6 +8,8 @@ spec:
     kind: Deployment
     name: ingest
   cooldownPeriod: 60 
+  minReplicaCount:  1
+  maxReplicaCount:  3 
   triggers:
   - type: azure-servicebus
     metadata:
