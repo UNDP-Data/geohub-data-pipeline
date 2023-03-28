@@ -8,9 +8,9 @@ from rio_cogeo import cog_info
 from rio_cogeo.cogeo import cog_translate
 from rio_cogeo.profiles import cog_profiles
 
-logger = logging.getLogger(__name__)
 
-def flush_cache(passwd):
+
+def flush_cache():
     """
     Flush Linux VM caches. Useful for doing meaningful tmei measurements for
     NetCDF or similar libs.
@@ -19,14 +19,15 @@ def flush_cache(passwd):
     """
     logger.debug('Clearing the OS cache using sudo -S sh -c "sync; echo 3 > /proc/sys/vm/drop_caches')
     #ret = os.system('echo %s | sudo -S sh -c "sync; echo 3 > /proc/sys/vm/drop_caches"' % passwd)
-    ret = os.popen('sudo -S sh -c "sync; echo 3 > /proc/sys/vm/drop_caches"', 'w').write(passwd)
+    #ret = os.popen('sudo -S sh -c "sync; echo 3 > /proc/sys/vm/drop_caches"', 'w').write(passwd)
+    ret = os.popen('sudo -S sh -c "sync; echo 3 > /proc/sys/vm/drop_caches"', 'w') # for docker
     return not bool(ret)
 
 def timeit(func=None,loops=1,verbose=False, clear_cache=False, sudo_passwd=None):
     #print 0, func, loops, verbose, clear_cache, sudo_passwd
     if func != None:
-        if clear_cache:
-            assert sudo_passwd, 'sudo_password argument is needed to clear the kernel cache'
+        # if clear_cache:
+        #     assert sudo_passwd, 'sudo_password argument is needed to clear the kernel cache'
 
         def inner(*args,**kwargs):
             sums = 0.0
@@ -35,7 +36,7 @@ def timeit(func=None,loops=1,verbose=False, clear_cache=False, sudo_passwd=None)
             logger.debug('====%s Timing====' % func.__name__)
             for i in range(0,loops):
                 if clear_cache:
-                    flush_cache(sudo_passwd)
+                    flush_cache()
                 t0 = time.time()
                 result = func(*args,**kwargs)
                 dt = time.time() - t0
@@ -58,16 +59,16 @@ def timeit(func=None,loops=1,verbose=False, clear_cache=False, sudo_passwd=None)
 
 
 
-
+@timeit(loops=10)
 def ingest_raster():
     # Define input and output paths
-    input_path = "b:/UNDP/dev/geohub-data-pipeline/ingest/test/GRAY_50M_SR.tif"
-    output_path = "rasterio_cog.tif"
+    input_path = "/data/GRAY_50M_SR.tif"
+    output_path = "/data/rasterio_cog.tif"
 
     config, output_profile = gdal_configs()
 
     try:
-        start_time = time.time()
+        #start_time = time.time()
         with rasterio.open(input_path, "r") as src_dataset:
             if src_dataset.colorinterp:
                 cog_translate(
@@ -97,24 +98,24 @@ def ingest_raster():
 
             # logger.info(json.dumps(json.loads(cog_info(out_cog_dataset_path).json()), indent=4) )
             # exit()
-            end_time = time.time()
-            print("Elapsed time: {:.2f} seconds".format(end_time - start_time))
+            #end_time = time.time()
+            #print("Elapsed time: {:.2f} seconds".format(end_time - start_time))
 
     except Exception as e:
         logger.error(f"Error creating COG from {input_path}: {e}. Uploading error blob")
 
-
+@timeit(loops=10)
 def test_gdal_translate():
     # Define input and output paths
-    input_path = "b:/UNDP/dev/geohub-data-pipeline/ingest/test/GRAY_50M_SR.tif"
-    output_path = "gdal_cog.tif"
+    input_path = "/data/GRAY_50M_SR.tif"
+    output_path = "/data/gdal_cog.tif"
 
     # Open the input dataset
 
     config, output_profile = gdal_configs()
 
     # Start timer
-    start_time = time.time()
+    #start_time = time.time()
 
     # Translate the dataset to COG
     gdal.Translate(
@@ -133,14 +134,14 @@ def test_gdal_translate():
         ],
     )
 
-    # End timer
-    end_time = time.time()
+    # # End timer
+    # end_time = time.time()
 
     # Close the input dataset
     src_ds = None
 
     # Print elapsed time
-    print("Elapsed time: {:.2f} seconds".format(end_time - start_time))
+    #print("Elapsed time: {:.2f} seconds".format(end_time - start_time))
 
 
 def gdal_configs(config={}, profile="zstd"):
@@ -170,7 +171,13 @@ def gdal_configs(config={}, profile="zstd"):
     ] = "YES"  # necessary to write files to AZ directly using rio
 
     return config, output_profile
+if __name__ == '__main__':
+    #docker compose build
+    #docker run --rm  -v /work/py/geohub-data-pipeline/ingest/test/data:/data -it geohub-data-pipeline_app:latest python -m ingest.test.raster2cog
 
-
-ingest_raster()
-test_gdal_translate()
+    import logging
+    logging.basicConfig()
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    ingest_raster()
+    #test_gdal_translate()
