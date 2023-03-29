@@ -54,7 +54,7 @@ jobs:
         env:
           KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
         with:
-          args: create secret generic ingest-secrets --save-config --dry-run=client --from-literal=AZURE_ACCESS_KEY=${{ secrets.AZURE_ACCESS_KEY }} --from-literal=ACCOUNT_NAME=${{ secrets.ACCOUNT_NAME }} --from-literal=ACCOUNT_NAME=${{ secrets.ACCOUNT_NAME }} --from-literal=CREDENTIAL_STRING=${{ secrets.CREDENTIAL_STRING }} --from-literal=CONTAINER_NAME=${{ secrets.CONTAINER_NAME }} --from-literal=ACCOUNT_URL=${{ secrets.ACCOUNT_URL }} --from-literal=CONNECTION_STRING=${{ secrets.CONNECTION_STRING }} --from-literal=SERVICE_BUS_CONNECTION_STRING=${{ secrets.SERVICE_BUS_CONNECTION_STRING }} --from-literal=SERVICE_BUS_QUEUE_NAME=${{ secrets.SERVICE_BUS_QUEUE_NAME }} -n ${{ secrets.DEPLOYMENT_NAMESPACE }} -o yaml | kubectl apply -f -
+          args: create secret generic ingest-secrets --save-config --dry-run=client --from-literal=AZURE_ACCESS_KEY=${{ secrets.AZURE_ACCESS_KEY }} --from-literal=ACCOUNT_NAME=${{ secrets.ACCOUNT_NAME }} --from-literal=ACCOUNT_NAME=${{ secrets.ACCOUNT_NAME }} --from-literal=CREDENTIAL_STRING=${{ secrets.CREDENTIAL_STRING }} --from-literal=CONTAINER_NAME=${{ secrets.CONTAINER_NAME }} --from-literal=ACCOUNT_URL=${{ secrets.ACCOUNT_URL }} --from-literal=CONNECTION_STRING=${{ secrets.CONNECTION_STRING }} --from-literal=SERVICE_BUS_CONNECTION_STRING=${{ secrets.SERVICE_BUS_CONNECTION_STRING }} --from-literal=SERVICE_BUS_QUEUE_NAME=${{ secrets.SERVICE_BUS_QUEUE_NAME }} -n ${{ secrets.DEPLOYMENT_NAMESPACE }}
       - name: Rollout new image
         uses: actions-hub/kubectl@master
         env:
