@@ -79,6 +79,7 @@ def timeit(func=None, loops=1, verbose=False, clear_cache=False, sudo_passwd=Non
         return partial_inner
 
 
+@timeit(loops=10)
 def ingest_raster():
     start_time = time.time()
 
@@ -265,7 +266,7 @@ def gdal_configs(config={}, profile="zstd"):
 
 
 @timeit(loops=10)
-async def run_test_gdal_translate_async_upload() -> float:
+async def run_test_gdal_translate_async_upload():
     input_path = "/data/NE1_HR_LC_SR_W_DR.tif"
     output_path = "/data/gdal_asynccog.tif"
     start_time = time.time()
@@ -301,9 +302,6 @@ async def run_test_gdal_translate_async_upload() -> float:
         ) as blob_client:
             with open(output_path, "rb") as upload_gdalfile:
                 await blob_client.upload_blob(upload_gdalfile, overwrite=True)
-
-    # Return elapsed time in seconds
-    return time.time() - start_time
 
 
 async def run_tests(num_tests: int):
@@ -363,8 +361,8 @@ if __name__ == "__main__":
     logging.basicConfig()
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
-    # ingest_raster()
+    ingest_raster()
     # asyncio.run(run_tests(10))
-    asyncio.run(run_test_gdal_translate_async_upload())
+    # asyncio.run(run_test_gdal_translate_async_upload())
     # test_gdal_translate_sync_upload()
     # test_gdal_translate_direct()
