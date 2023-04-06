@@ -1,4 +1,4 @@
-FROM osgeo/gdal:ubuntu-small-3.6.2 AS builder
+FROM ghcr.io/osgeo/gdal:ubuntu-small-latest AS builder
 
 ENV TZ=Etc/UTC
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
@@ -15,7 +15,7 @@ RUN git clone https://github.com/felt/tippecanoe \
  && cd ../ \
  && rm -rf tippecanoe
 
-FROM osgeo/gdal:ubuntu-small-3.6.2
+FROM ghcr.io/osgeo/gdal:ubuntu-small-latest
 
 ENV TZ=Etc/UTC
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone

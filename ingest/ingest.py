@@ -4,7 +4,7 @@ import logging
 import os
 from io import StringIO
 from traceback import print_exc
-
+from ingest.processing import process_geo_file
 from azure.servicebus import TransportType
 from azure.servicebus.aio import AutoLockRenewer, ServiceBusClient
 
@@ -13,7 +13,6 @@ from ingest.raster_to_cog import ingest_raster, ingest_raster_sync
 from ingest.utils import (
     copy_raw2datasets,
     gdal_open_async,
-    gdal_open_sync,
     handle_lock,
     prepare_blob_path,
     prepare_vsiaz_path,
@@ -48,12 +47,14 @@ async def ingest_message():
                     )
 
                     if not received_msgs:
-                        logger.info(f"No messages to process")
+                        logger.info(f'No messages to process. Queue "{QUEUE_NAME}" is empty')
                         break
+
                     for msg in received_msgs:
                         try:
                             msg_str = json.loads(str(msg))
                             blob_path, token = msg_str.split(";")
+                            if not 'ne_10m' in blob_path:continue
                             logger.info(
                                 f"Received blob: {blob_path} from queue"
                             )
@@ -99,7 +100,7 @@ async def ingest_message():
                                     for ingest_future in done:
                                         try:
                                             res = await ingest_future
-                                            await receiver.complete_message(msg)
+                                            #await receiver.complete_message(msg)
                                             # logger.info(f'{str(msg)} completed with result {res}')
                                             for pending_future in pending:
                                                 pending_future.cancel()
@@ -112,14 +113,14 @@ async def ingest_message():
                                                 )  # exc is extracted using system.exc_info
                                                 error_message = m.getvalue()
                                                 logger.error(error_message)
-                                            logger.info(
-                                                f"Pushing {msg} to dead letter sub-queue"
-                                            )
-                                            await receiver.dead_letter_message(
-                                                msg,
-                                                reason="ingest error",
-                                                error_description=error_message,
-                                            )
+                                            # logger.info(
+                                            #     f"Pushing {msg} to dead letter sub-queue"
+                                            # )
+                                            # await receiver.dead_letter_message(
+                                            #     msg,
+                                            #     reason="ingest error",
+                                            #     error_description=error_message,
+                                            # )
                                 else:
                                     logger.info(
                                         f"Skipping {blob_path} because it is not in the {raw_folder} folder"
@@ -133,9 +134,9 @@ async def ingest_message():
                                 print_exc(file=m)
                                 em = m.getvalue()
                                 logger.error(em)
-                            await receiver.dead_letter_message(
-                                msg, reason="message parse error", error_description=em
-                            )
+                            # await receiver.dead_letter_message(
+                            #     msg, reason="message parse error", error_description=em
+                            # )
                             continue
 
 def sync_ingest(blob_path: str, token=None):
@@ -153,14 +154,14 @@ def sync_ingest(blob_path: str, token=None):
         asyncio.run(copy_raw2datasets(raw_blob_path=container_blob_path))
     else:
         vsiaz_path = prepare_vsiaz_path(container_blob_path)
-        nrasters, nvectors = gdal_open_sync(vsiaz_path)
+        try:
+            #nrasters, nvectors = gdal_open_sync(vsiaz_path)
+            process_geo_file(vsiaz_path)
 
-        # 2 ingest
-        if nrasters > 0:
-            ingest_raster_sync(vsiaz_blob_path=vsiaz_path)
-        if nvectors > 0:
-            ingest_vector_sync(vsiaz_blob_path=vsiaz_path)
-        # csv
+        except Exception as e:
+            pass
+            # csv attempt
+
 
     logger.info(f"Finished ingesting {blob_path}")
 
@@ -190,3 +191,5 @@ async def ingest(blob_path: str, token=None):
         # csv
 
     logger.info(f"Finished ingesting {blob_path}")
+
+

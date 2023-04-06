@@ -56,9 +56,8 @@ MBTILES (.mbtiles)
 
 ESRI File Geodatabase (OpenFileGDB) (.gdb)
 
-ESRI File Geodatabase (FileGDB) (.gdb)
+ESRI File Geodatabase (FileGDB) (.gdb) uses ESRI SDK
 
-ESRI Personal GeoDatabase (.mdb)
 
 GeoPackage (.gpkg)
 
@@ -93,6 +92,7 @@ def gdal_configs(config={}, profile="zstd"):
     output_profile.update({"BIGTIFF": "YES", "blockxsize": 256, "blockysize": 256})
 
     config["GDAL_NUM_THREADS"] = "ALL_CPUS"
+    config["GDAL_DISABLE_READDIR_ON_OPEN"] = "TRUE"
     config["RESAMPLING"] = "NEAREST"
     config["OVERVIEWS"] = "IGNORE_EXISTING"
     config["OVERVIEW_RESAMPLING"] = "NEAREST"

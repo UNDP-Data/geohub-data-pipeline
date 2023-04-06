@@ -16,7 +16,7 @@ from ingest.config import GDAL_ARCHIVE_FORMATS
 from ingest.ingest_exceptions import ClientRequestError, ResourceNotFoundError
 
 logger = logging.getLogger(__name__)
-
+# gdal.UseExceptions()
 
 def prepare_blob_path(blob_path: str) -> str:
     """
@@ -65,15 +65,14 @@ async def gdal_open_async(filename):
 
 def gdal_open_sync(filename):
 
-    logger.info(f"Opening {filename} with GDAL")
+    logger.info(f"Opening {filename}")
     dataset = gdal.OpenEx(filename, gdal.GA_ReadOnly)
 
     if dataset is None:
         logger.error(f"{filename} does not contain GIS data")
-        loop = asyncio.get_running_loop()
-
-        loop.run_in_executor(None, upload_error_blob,filename, f"{filename} does not contain GIS data")
+        asyncio.run(upload_error_blob(filename, f"{filename} does not contain GIS data"))
     nrasters, nvectors = dataset.RasterCount, dataset.GetLayerCount()
+
     dataset = None
     return nrasters, nvectors
 
@@ -170,12 +169,18 @@ async def handle_lock(receiver=None, message=None):
 
     @return: None
     """
-    while True:
-        lu = message.locked_until_utc
-        n = datetime.datetime.utcnow()
-        d = int((lu.replace(tzinfo=n.tzinfo)-n).total_seconds())
-        logger.info(f'locked until {lu} utc now is {n} lock expired {message._lock_expired} and will expire in  {d}')
-        if d < 10:
-            logger.info('renewing lock')
-            await receiver.renew_message_lock(message=message,)
-        await asyncio.sleep(1)
+    try:
+        logger.info('Starting lock monitoring...')
+        while True:
+            lu = message.locked_until_utc
+            n = datetime.datetime.utcnow()
+            d = int((lu.replace(tzinfo=n.tzinfo)-n).total_seconds())
+            logger.debug(f'locked until {lu} utc now is {n} lock expired {message._lock_expired} and will expire in  {d}')
+            if d < 10:
+                logger.info('renewing lock')
+                await receiver.renew_message_lock(message=message,)
+            await asyncio.sleep(1)
+    except Exception as e:
+        logger.error(f'hl error {e}')
+
+
