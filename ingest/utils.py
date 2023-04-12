@@ -183,4 +183,15 @@ async def handle_lock(receiver=None, message=None):
     except Exception as e:
         logger.error(f'hl error {e}')
 
+def upload_blob(src_path=None, container_name=None, dst_blob_name=None,overwrite=True,max_concurrency=8 ):
+    parsed_src_url = urlparse(src_path)
+    if not dst_blob_name:
+        _, dst_blob_name = os.path.split(parsed_src_url.path)
 
+
+    with BlobServiceClient.from_connection_string(connection_string) as blob_service_client:
+        with blob_service_client.get_blob_client(container=container_name, blob=out_pmtiles_path) as blob_client:
+            with open(src_path, "rb") as upload_file:
+                await blob_client.upload_blob(upload_file, overwrite=overwrite, max_concurrency=max_concurrency)
+
+            logger.info(f"Successfully wrote PMTiles to {out_pmtiles_path}")
