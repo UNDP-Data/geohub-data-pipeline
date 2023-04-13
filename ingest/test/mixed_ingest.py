@@ -15,8 +15,8 @@ if __name__ == '__main__':
     logger.addHandler(sthandler)
     logger.name = __name__
     fpath = '/data/File_GeoHub_Geodatabase.gdb'
-    #fpath = '/data/featuredataset.gdb.zip'
+    #fpath = '/vsizip/data/featuredataset.gdb.zip'
     #fpath = '/data/Sample.gpkg'
     #fpath = '/data/Percent_electricity_access_2012.tif'
     #fpath = '/data/devel.tif'
-    process_geo_file(vsiaz_blob_path=fpath, join_vector_tiles=True, timeout_secs=3600)
+    process_geo_file(vsiaz_blob_path=fpath, join_vector_tiles=True)

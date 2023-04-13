@@ -12,20 +12,20 @@ logging.basicConfig(
 raw_folder = "raw"
 datasets_folder = "datasets"
 
-account_url = os.getenv("ACCOUNT_URL")
-assert account_url is not None, f"ACCOUNT_URL env var is not set"
-container_name = os.getenv("CONTAINER_NAME")
-assert container_name is not None, f"CONTAINER_NAME env var is not set"
-azure_storage_access_key = os.getenv("AZURE_ACCESS_KEY")
-assert azure_storage_access_key is not None, f"AZURE_ACCESS_KEY env var is not set"
-connection_string = os.getenv("CONNECTION_STRING")
-assert connection_string is not None, f"CONNECTION_STRING env var is not set"
-account_name = os.getenv("ACCOUNT_NAME")
-assert account_name is not None, f"ACCOUNT_NAME env var is not set"
-
-os.environ["AZURE_STORAGE_ACCESS_KEY"] = azure_storage_access_key
-os.environ["AZURE_STORAGE_ACCOUNT"] = account_name
-os.environ["AZURE_STORAGE_CONNECTION_STRING"] = connection_string
+# account_url = os.getenv("ACCOUNT_URL")
+# assert account_url is not None, f"ACCOUNT_URL env var is not set"
+# container_name = os.getenv("CONTAINER_NAME")
+# assert container_name is not None, f"CONTAINER_NAME env var is not set"
+# azure_storage_access_key = os.getenv("AZURE_ACCESS_KEY")
+# assert azure_storage_access_key is not None, f"AZURE_ACCESS_KEY env var is not set"
+# connection_string = os.getenv("CONNECTION_STRING")
+# assert connection_string is not None, f"CONNECTION_STRING env var is not set"
+# account_name = os.getenv("ACCOUNT_NAME")
+# assert account_name is not None, f"ACCOUNT_NAME env var is not set"
+#
+# os.environ["AZURE_STORAGE_ACCESS_KEY"] = azure_storage_access_key
+# os.environ["AZURE_STORAGE_ACCOUNT"] = account_name
+# os.environ["AZURE_STORAGE_CONNECTION_STRING"] = connection_string
 
 GDAL_ARCHIVE_FORMATS = {
     ".zip": "vsizip",
@@ -99,9 +99,21 @@ def gdal_configs(config={}, profile="zstd"):
     config["PREDICTOR"] = "YES"
     config["TARGET_SRS"] = "EPSG:3857"
     config["GDAL_TIFF_INTERNAL_MASK"] = True
+    config["OGR_ORGANIZE_POLYGONS"] = "DEFAULT" # for parsing ArcGIS GDB correctly
+
     # config["GDAL_TIFF_OVR_BLOCKSIZE"] = "128"
     config[
         "CPL_VSIL_USE_TEMP_FILE_FOR_RANDOM_WRITE"
     ] = "YES"  # necessary to write files to AZ directkly using rio
 
     return config, output_profile
+
+
+def setup_env_vars():
+    connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+    assert connection_string is not None, f"AZURE_STORAGE_CONNECTION_STRING env var is not set"
+    account_name = connection_string.split(';')[1].split('=')[1]
+    os.environ["AZURE_STORAGE_ACCOUNT"] = account_name
+    service_bus_connection = os.environ['SERVICE_BUS_CONNECTION_STRING']
+    queue_name = service_bus_connection.split(';')[-1].split('=')[1]
+    os.environ['SERVICE_BUS_QUEUE_NAME'] = queue_name

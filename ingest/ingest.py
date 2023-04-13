@@ -1,23 +1,24 @@
 import asyncio
 import json
 import logging
+import multiprocessing
 import os
 from io import StringIO
 from traceback import print_exc
 from ingest.processing import process_geo_file
-from azure.servicebus import TransportType
 from azure.servicebus.aio import AutoLockRenewer, ServiceBusClient
-
-from ingest.config import raw_folder
-from ingest.raster_to_cog import ingest_raster, ingest_raster_sync
+from ingest.config import raw_folder, setup_env_vars
+from multiprocessing import Event
+# from ingest.raster_to_cog import ingest_raster, ingest_raster_sync
 from ingest.utils import (
     copy_raw2datasets,
-    gdal_open_async,
+    # gdal_open_async,
     handle_lock,
     prepare_blob_path,
     prepare_vsiaz_path,
+
 )
-from ingest.vector_to_tiles import ingest_vector, ingest_vector_sync
+# from ingest.vector_to_tiles import ingest_vector, ingest_vector_sync
 
 logger = logging.getLogger(__name__)
 
@@ -27,12 +28,16 @@ azlogger.setLevel(logging.WARNING)
 sblogger = logging.getLogger("uamqp")
 sblogger.setLevel(logging.WARNING)
 
+setup_env_vars()
+
+INGEST_TIMEOUT = 36  # 1 hours MAX
 CONNECTION_STR = os.environ["SERVICE_BUS_CONNECTION_STRING"]
 QUEUE_NAME = os.environ["SERVICE_BUS_QUEUE_NAME"]
-INGEST_TIMEOUT = 3600 * 12  # 12 hours MAX
-
 
 async def ingest_message():
+
+
+
     async with ServiceBusClient.from_connection_string(
         conn_str=CONNECTION_STR, logging_enable=True
     ) as servicebus_client:
@@ -47,17 +52,18 @@ async def ingest_message():
                     )
 
                     if not received_msgs:
-                        logger.info(f'No messages to process. Queue "{QUEUE_NAME}" is empty')
+                        logger.debug(f'No (more) messages to process. Queue "{QUEUE_NAME}" is empty')
                         break
 
                     for msg in received_msgs:
                         try:
                             msg_str = json.loads(str(msg))
                             blob_path, token = msg_str.split(";")
-                            if not 'ne_10m' in blob_path:continue
+                            #if not 'ne_110m' in blob_path:continue
                             logger.info(
                                 f"Received blob: {blob_path} from queue"
                             )
+
                             async with AutoLockRenewer() as auto_lock_renewer:
                                 auto_lock_renewer.register(
                                     receiver=receiver, renewable=msg
@@ -83,30 +89,41 @@ async def ingest_message():
                                      extracted and the message is dead lettered.
 
 
-
+                                    
                                     """
+                                    ingest_event = multiprocessing.Event()
                                     ingest_task = asyncio.ensure_future(
-                                        asyncio.to_thread(sync_ingest, blob_path, token)
+                                        asyncio.to_thread(sync_ingest, blob_path=blob_path, event=ingest_event )
                                     )
-                                    bg = asyncio.ensure_future(
+                                    ingest_task.set_name('ingest')
+                                    lock_task = asyncio.ensure_future(
                                         handle_lock(receiver=receiver, message=msg)
                                     )
+                                    lock_task.set_name('lock')
 
                                     done, pending = await asyncio.wait(
-                                        [bg, ingest_task],
+                                        [lock_task, ingest_task],
                                         return_when=asyncio.FIRST_COMPLETED,
                                         timeout=INGEST_TIMEOUT,
                                     )
+                                    if len(done) == 0:
+                                        logger.info(f'Ingest has timed out after {INGEST_TIMEOUT} seconds.')
+                                        ingest_event.set()
+                                    logger.debug(f'Handling done tasks')
+
+
+
                                     for ingest_future in done:
+
                                         try:
                                             res = await ingest_future
                                             #await receiver.complete_message(msg)
                                             # logger.info(f'{str(msg)} completed with result {res}')
-                                            for pending_future in pending:
-                                                pending_future.cancel()
+                                            # for pending_future in pending:
+                                            #     pending_future.cancel()
                                         except Exception as e:
-                                            for pending_future in pending:
-                                                pending_future.cancel()
+                                            # for pending_future in pending:
+                                            #     pending_future.cancel()
                                             with StringIO() as m:
                                                 print_exc(
                                                     file=m
@@ -121,6 +138,7 @@ async def ingest_message():
                                             #     reason="ingest error",
                                             #     error_description=error_message,
                                             # )
+
                                 else:
                                     logger.info(
                                         f"Skipping {blob_path} because it is not in the {raw_folder} folder"
@@ -138,8 +156,9 @@ async def ingest_message():
                             #     msg, reason="message parse error", error_description=em
                             # )
                             continue
+                        logger.info('tada')
 
-def sync_ingest(blob_path: str, token=None):
+def sync_ingest(blob_path: str, token=None, event=None):
     """
     Ingest a geospatial data file potentially containing multiple layers
     into geohub
@@ -155,41 +174,41 @@ def sync_ingest(blob_path: str, token=None):
     else:
         vsiaz_path = prepare_vsiaz_path(container_blob_path)
         try:
-            #nrasters, nvectors = gdal_open_sync(vsiaz_path)
-            process_geo_file(vsiaz_path)
 
+            process_geo_file(vsiaz_blob_path=vsiaz_path, join_vector_tiles=False, event=event)
+            logger.info(f"Finished ingesting {blob_path}")
         except Exception as e:
-            pass
+            logger.error(e)
             # csv attempt
 
 
-    logger.info(f"Finished ingesting {blob_path}")
 
 
-async def ingest(blob_path: str, token=None):
-    """
-    Ingest a geospatial data file potentially containing multiple layers
-    into geohub
-    Follows exactly https://github.com/UNDP-Data/geohub/discussions/545
-
-    """
-    logger.info(f"Starting to ingest {blob_path}")
-    # if the file is a pmtiles file, return without ingesting, copy to datasets
-    container_blob_path = prepare_blob_path(blob_path)
-
-    if blob_path.endswith(".pmtiles"):
-        await copy_raw2datasets(raw_blob_path=container_blob_path)
-    else:
-        vsiaz_path = prepare_vsiaz_path(container_blob_path)
-        nrasters, nvectors = await gdal_open_async(vsiaz_path)
-
-        # 2 ingest
-        if nrasters > 0:
-            await ingest_raster(vsiaz_blob_path=vsiaz_path)
-        if nvectors > 0:
-            await ingest_vector(vsiaz_blob_path=vsiaz_path)
-        # csv
-
-    logger.info(f"Finished ingesting {blob_path}")
+#
+# async def ingest(blob_path: str, token=None):
+#     """
+#     Ingest a geospatial data file potentially containing multiple layers
+#     into geohub
+#     Follows exactly https://github.com/UNDP-Data/geohub/discussions/545
+#
+#     """
+#     logger.info(f"Starting to ingest {blob_path}")
+#     # if the file is a pmtiles file, return without ingesting, copy to datasets
+#     container_blob_path = prepare_blob_path(blob_path)
+#
+#     if blob_path.endswith(".pmtiles"):
+#         await copy_raw2datasets(raw_blob_path=container_blob_path)
+#     else:
+#         vsiaz_path = prepare_vsiaz_path(container_blob_path)
+#         nrasters, nvectors = await gdal_open_async(vsiaz_path)
+#
+#         # 2 ingest
+#         if nrasters > 0:
+#             await ingest_raster(vsiaz_blob_path=vsiaz_path)
+#         if nvectors > 0:
+#             await ingest_vector(vsiaz_blob_path=vsiaz_path)
+#         # csv
+#
+#     logger.info(f"Finished ingesting {blob_path}")
 
 

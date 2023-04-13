@@ -2,6 +2,7 @@ import asyncio
 import logging
 from ingest.ingest import ingest_message
 
+
 if __name__ == "__main__":
     logging.basicConfig()
     logger = logging.getLogger()
@@ -14,5 +15,6 @@ if __name__ == "__main__":
     logger.handlers.clear()
     logger.addHandler(sthandler)
     logger.name = __name__
+
 
     asyncio.run(ingest_message())

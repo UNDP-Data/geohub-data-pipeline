@@ -11,10 +11,10 @@ from ingest.config import GDAL_ARCHIVE_FORMATS
 from azure.storage.blob.aio import BlobServiceClient
 
 from ingest.config import (
-    account_name,
-    azure_storage_access_key,
-    connection_string,
-    container_name,
+    # account_name,
+    # azure_storage_access_key,
+    # connection_string,
+    # container_name,
     datasets_folder,
     raw_folder,
 )

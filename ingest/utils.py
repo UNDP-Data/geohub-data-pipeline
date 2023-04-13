@@ -3,12 +3,12 @@ import logging
 import os.path
 from urllib.parse import urlparse
 from azure.storage.blob.aio import BlobLeaseClient, BlobServiceClient
-from osgeo import gdal
+import json
 import datetime
 from ingest.config import (
-    account_url,
-    connection_string,
-    container_name,
+    # account_url,
+    # connection_string,
+    # container_name,
     datasets_folder,
     raw_folder,
 )
@@ -16,7 +16,7 @@ from ingest.config import GDAL_ARCHIVE_FORMATS
 from ingest.ingest_exceptions import ClientRequestError, ResourceNotFoundError
 
 logger = logging.getLogger(__name__)
-# gdal.UseExceptions()
+
 
 def prepare_blob_path(blob_path: str) -> str:
     """
@@ -46,37 +46,37 @@ def get_dst_blob_path(blob_path: str) -> str:
     pmtile_name = blob_path.split("/")[-1]
     return f"{dst_blob}/{pmtile_name}"
 
+#
+# async def gdal_open_async(filename):
+#     logger.info(f"Opening {filename} with GDAL")
+#     #gdal.SetConfigOption("AZURE_STORAGE_CONNECTION_STRING", connection_string)
+#     dataset = gdal.OpenEx(filename, gdal.GA_ReadOnly)
+#
+#     #dataset = await asyncio.to_thread(gdal.OpenEx, filename, gdal.GA_ReadOnly)
+#     if dataset is None:
+#         logger.error(f"{filename} does not contain GIS data")
+#         await upload_error_blob(filename, f"{filename} does not contain GIS data")
+#
+#
+#     nrasters, nvectors = dataset.RasterCount, dataset.GetLayerCount()
+#     dataset = None
+#
+#     return nrasters, nvectors
+#
+# def gdal_open_sync(filename):
+#
+#     logger.info(f"Opening {filename}")
+#     dataset = gdal.OpenEx(filename, gdal.GA_ReadOnly)
+#
+#     if dataset is None:
+#         logger.error(f"{filename} does not contain GIS data")
+#         asyncio.run(upload_error_blob(filename, f"{filename} does not contain GIS data"))
+#     nrasters, nvectors = dataset.RasterCount, dataset.GetLayerCount()
+#
+#     dataset = None
+#     return nrasters, nvectors
 
-async def gdal_open_async(filename):
-    logger.info(f"Opening {filename} with GDAL")
-    #gdal.SetConfigOption("AZURE_STORAGE_CONNECTION_STRING", connection_string)
-    dataset = gdal.OpenEx(filename, gdal.GA_ReadOnly)
-
-    #dataset = await asyncio.to_thread(gdal.OpenEx, filename, gdal.GA_ReadOnly)
-    if dataset is None:
-        logger.error(f"{filename} does not contain GIS data")
-        await upload_error_blob(filename, f"{filename} does not contain GIS data")
-
-
-    nrasters, nvectors = dataset.RasterCount, dataset.GetLayerCount()
-    dataset = None
-
-    return nrasters, nvectors
-
-def gdal_open_sync(filename):
-
-    logger.info(f"Opening {filename}")
-    dataset = gdal.OpenEx(filename, gdal.GA_ReadOnly)
-
-    if dataset is None:
-        logger.error(f"{filename} does not contain GIS data")
-        asyncio.run(upload_error_blob(filename, f"{filename} does not contain GIS data"))
-    nrasters, nvectors = dataset.RasterCount, dataset.GetLayerCount()
-
-    dataset = None
-    return nrasters, nvectors
-
-async def copy_raw2datasets(raw_blob_path: str):
+async def copy_raw2datasets(raw_blob_path: str, connection_string=None):
     """
     Copy raw_blob to the datasets directory
     """
@@ -126,7 +126,14 @@ async def copy_raw2datasets(raw_blob_path: str):
         )
 
 
-async def upload_ingesting_blob(blob_path: str):
+async def upload_ingesting_blob(blob_path: str, container_name=None, connection_string=None):
+    """
+
+    @param blob_path:
+    @param container_name:
+    @param connection_string:
+    @return:
+    """
     if f"/{container_name}/" in blob_path:
         blob_path = blob_path.split(f"/{container_name}/")[-1]
     ingesting_blob_path = f"{blob_path}.ingesting"
@@ -141,7 +148,7 @@ async def upload_ingesting_blob(blob_path: str):
         logger.error(f"Failed to upload {ingesting_blob_path}: {e}")
 
 
-async def upload_error_blob(blob_path:str=None, error_message:str=None):
+async def upload_error_blob(blob_path:str=None, error_message:str=None, container_name:str=None, connection_string=None):
     # handle the case when paths are coming from ingest_raster
     if f"/{container_name}/" in blob_path:
         blob_path = blob_path.split(f"/{container_name}/")[-1]
@@ -170,7 +177,9 @@ async def handle_lock(receiver=None, message=None):
     @return: None
     """
     try:
-        logger.info('Starting lock monitoring...')
+        msg_str = json.loads(str(message))
+        blob_path, token = msg_str.split(";")
+        logger.debug(f'Starting lock monitoring for {blob_path}')
         while True:
             lu = message.locked_until_utc
             n = datetime.datetime.utcnow()
@@ -183,15 +192,17 @@ async def handle_lock(receiver=None, message=None):
     except Exception as e:
         logger.error(f'hl error {e}')
 
-def upload_blob(src_path=None, container_name=None, dst_blob_name=None,overwrite=True,max_concurrency=8 ):
-    parsed_src_url = urlparse(src_path)
-    if not dst_blob_name:
-        _, dst_blob_name = os.path.split(parsed_src_url.path)
+def upload_blob(src_path=None, connection_string=None, container_name=None,
+                dst_blob_path=None,overwrite=True,max_concurrency=8 ):
+
 
 
     with BlobServiceClient.from_connection_string(connection_string) as blob_service_client:
-        with blob_service_client.get_blob_client(container=container_name, blob=out_pmtiles_path) as blob_client:
+        with blob_service_client.get_blob_client(container=container_name, blob=dst_blob_path) as blob_client:
             with open(src_path, "rb") as upload_file:
-                await blob_client.upload_blob(upload_file, overwrite=overwrite, max_concurrency=max_concurrency)
+                blob_client.upload_blob(upload_file, overwrite=overwrite, max_concurrency=max_concurrency)
+            logger.info(f"Successfully wrote PMTiles to {dst_blob_path}")
 
-            logger.info(f"Successfully wrote PMTiles to {out_pmtiles_path}")
+
+
+

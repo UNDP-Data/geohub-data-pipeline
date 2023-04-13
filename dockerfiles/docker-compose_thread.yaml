@@ -1,0 +1,9 @@
+version: '3'
+services:
+  app:
+    build: ../
+    command: "python -m ingest.test.test_thread"
+    env_file:
+      - ../.env
+    volumes:
+      - /home/janf/Downloads/data:/data
