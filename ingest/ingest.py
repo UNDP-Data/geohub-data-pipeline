@@ -8,7 +8,8 @@ from traceback import print_exc
 from ingest.processing import process_geo_file
 from azure.servicebus.aio import AutoLockRenewer, ServiceBusClient
 from ingest.config import raw_folder, setup_env_vars
-from multiprocessing import Event
+
+
 # from ingest.raster_to_cog import ingest_raster, ingest_raster_sync
 from ingest.utils import (
     copy_raw2datasets,
@@ -16,6 +17,8 @@ from ingest.utils import (
     handle_lock,
     prepare_blob_path,
     prepare_vsiaz_path,
+    download_blob,
+    download_blob_sync
 
 )
 # from ingest.vector_to_tiles import ingest_vector, ingest_vector_sync
@@ -30,10 +33,10 @@ sblogger.setLevel(logging.WARNING)
 
 setup_env_vars()
 
-INGEST_TIMEOUT = 36  # 1 hours MAX
+INGEST_TIMEOUT = 3600  # 1 hours MAX
 CONNECTION_STR = os.environ["SERVICE_BUS_CONNECTION_STRING"]
 QUEUE_NAME = os.environ["SERVICE_BUS_QUEUE_NAME"]
-
+AZ_STORAGE_CONN_STR = os.environ['AZURE_STORAGE_CONNECTION_STRING']
 async def ingest_message():
 
 
@@ -52,14 +55,14 @@ async def ingest_message():
                     )
 
                     if not received_msgs:
-                        logger.debug(f'No (more) messages to process. Queue "{QUEUE_NAME}" is empty')
+                        logger.info(f'No (more) messages to process. Queue "{QUEUE_NAME}" is empty')
                         break
 
                     for msg in received_msgs:
                         try:
                             msg_str = json.loads(str(msg))
                             blob_path, token = msg_str.split(";")
-                            #if not 'ne_110m' in blob_path:continue
+                            if not 'District' in blob_path:continue
                             logger.info(
                                 f"Received blob: {blob_path} from queue"
                             )
@@ -91,9 +94,15 @@ async def ingest_message():
 
                                     
                                     """
+
+                                    logger.info(f'Handling done tasks')
+
+
+
+
                                     ingest_event = multiprocessing.Event()
                                     ingest_task = asyncio.ensure_future(
-                                        asyncio.to_thread(sync_ingest, blob_path=blob_path, event=ingest_event )
+                                        asyncio.to_thread(sync_ingest, blob_path=blob_path, event=ingest_event, conn_string=AZ_STORAGE_CONN_STR )
                                     )
                                     ingest_task.set_name('ingest')
                                     lock_task = asyncio.ensure_future(
@@ -109,56 +118,67 @@ async def ingest_message():
                                     if len(done) == 0:
                                         logger.info(f'Ingest has timed out after {INGEST_TIMEOUT} seconds.')
                                         ingest_event.set()
-                                    logger.debug(f'Handling done tasks')
 
-
-
-                                    for ingest_future in done:
-
+                                    for done_future in done:
                                         try:
-                                            res = await ingest_future
-                                            #await receiver.complete_message(msg)
-                                            # logger.info(f'{str(msg)} completed with result {res}')
-                                            # for pending_future in pending:
-                                            #     pending_future.cancel()
+                                            res = await done_future
+                                            logger.info(f'{done_future.get_name()} completed with result {res}')
+
                                         except Exception as e:
-                                            # for pending_future in pending:
-                                            #     pending_future.cancel()
                                             with StringIO() as m:
-                                                print_exc(
-                                                    file=m
-                                                )  # exc is extracted using system.exc_info
-                                                error_message = m.getvalue()
-                                                logger.error(error_message)
-                                            # logger.info(
-                                            #     f"Pushing {msg} to dead letter sub-queue"
-                                            # )
-                                            # await receiver.dead_letter_message(
-                                            #     msg,
-                                            #     reason="ingest error",
-                                            #     error_description=error_message,
-                                            # )
+                                                print_exc(file=m)
+                                                em = m.getvalue()
+
+                                                logger.error(f'done future error {em}')
+
+
+                                    logger.info(f'Cancelling pending tasks')
+
+                                    for pending_future in pending:
+                                        logger.info(f'Cancelling {pending_future.get_name()}')
+                                        try:
+                                            pending_future.cancel()
+                                            await pending_future
+                                        except asyncio.CancelledError:
+                                            logger.error(f'prending future {pending_future.get_name()} has been cancelled')
+                                        except Exception as e:
+                                            logger.error(f'encountered error {e}')
+
+                                    # for done_future in done:
+                                    #     await done_future
+                                    #     #await receiver.complete_message(msg)
+                                    #     # logger.debug(f'{str(msg)} completed with result {res}')
+                                    # for pending_future in pending:
+                                    #     logger.debug(f'Cancelling {pending_future.get_name()}')
+                                    #     try:
+                                    #         pending_future.cancel()
+                                    #         await pending_future
+                                    #     except asyncio.CancelledError:
+                                    #         logger.debug(f'pending future {pending_future.get_name()} has been cancelled')
+                                    #     except Exception as e:
+                                    #         raise
+
 
                                 else:
                                     logger.info(
                                         f"Skipping {blob_path} because it is not in the {raw_folder} folder"
                                     )
-                                    await receiver.complete_message(msg)
+                                    #await receiver.complete_message(msg)
                                     logger.info(f"Completed message for: {blob_path}")
 
-                        except Exception as pe:
-                            logger.info(f"Pushing {msg} to deadletter subqueue")
+                        except Exception as pe: # this  first level might be redundant
                             with StringIO() as m:
                                 print_exc(file=m)
                                 em = m.getvalue()
                                 logger.error(em)
+                            logger.info(f"Pushing {msg} to dead-letter sub-queue")
                             # await receiver.dead_letter_message(
                             #     msg, reason="message parse error", error_description=em
                             # )
-                            continue
-                        logger.info('tada')
+                            #continue
 
-def sync_ingest(blob_path: str, token=None, event=None):
+
+def sync_ingest(blob_path: str, token=None, event=None, conn_string=None):
     """
     Ingest a geospatial data file potentially containing multiple layers
     into geohub
@@ -169,13 +189,15 @@ def sync_ingest(blob_path: str, token=None, event=None):
     # if the file is a pmtiles file, return without ingesting, copy to datasets
     container_blob_path = prepare_blob_path(blob_path)
 
+
+
     if blob_path.endswith(".pmtiles"):
         asyncio.run(copy_raw2datasets(raw_blob_path=container_blob_path))
     else:
-        vsiaz_path = prepare_vsiaz_path(container_blob_path)
+        #vsiaz_path = prepare_vsiaz_path(container_blob_path)
         try:
 
-            process_geo_file(vsiaz_blob_path=vsiaz_path, join_vector_tiles=False, event=event)
+            process_geo_file(vsiaz_blob_path=container_blob_path, join_vector_tiles=False, event=event, conn_string=conn_string)
             logger.info(f"Finished ingesting {blob_path}")
         except Exception as e:
             logger.error(e)

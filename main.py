@@ -11,7 +11,7 @@ if __name__ == "__main__":
                                              "%Y-%m-%d %H:%M:%S"))
 
 
-
+    logger.setLevel(logging.INFO)
     logger.handlers.clear()
     logger.addHandler(sthandler)
     logger.name = __name__

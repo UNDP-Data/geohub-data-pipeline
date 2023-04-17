@@ -1,10 +1,15 @@
 import asyncio
 import logging
 import os.path
+import tempfile
+import time
 from urllib.parse import urlparse
-from azure.storage.blob.aio import BlobLeaseClient, BlobServiceClient
+from azure.storage.blob.aio import BlobLeaseClient, BlobServiceClient, ContainerClient as AContainerClient
+from azure.storage.blob import ContainerClient
 import json
 import datetime
+import multiprocessing
+from functools import wraps
 from ingest.config import (
     # account_url,
     # connection_string,
@@ -92,6 +97,7 @@ async def copy_raw2datasets(raw_blob_path: str, connection_string=None):
 
             src_blob = container_client.get_blob_client(blob_path)
             src_props = await src_blob.get_blob_properties()
+
 
             async with BlobLeaseClient(client=src_blob) as lease:
                 await lease.acquire(30)
@@ -203,6 +209,144 @@ def upload_blob(src_path=None, connection_string=None, container_name=None,
                 blob_client.upload_blob(upload_file, overwrite=overwrite, max_concurrency=max_concurrency)
             logger.info(f"Successfully wrote PMTiles to {dst_blob_path}")
 
+
+def run_as_process(f):
+    """
+    Decorator to run any function inside a separate process. Allows to timeout the  execution.
+    Ideally the called function handles gracefully the exceptions by wrapping them inside the com_pipe object
+
+    :param f:
+    :return:
+    """
+    @wraps(f)
+    def run(*args,  **kwargs):
+        try:
+            timeout = kwargs.get('timeout') if 'timeout' in kwargs else 1
+            recv_end, send_end = multiprocessing.Pipe(False) #  one way only
+            kwargs.update({'com_pipe':send_end})
+            p = multiprocessing.Process(target=f, name=f.__name__, args=args, kwargs=kwargs)
+            p.start()
+            p.join(timeout)
+            exit_code = p.exitcode
+            #logger.info(f'Process {p.name} has exitcode {exit_code}')
+            if exit_code is None:
+                sec_label = 'seconds' if timeout > 1 else 'second'
+                raise multiprocessing.TimeoutError(f'The function {f.__name__} did not complete successfully in {timeout} {sec_label} with kwargs {kwargs}')
+            else:
+                if exit_code < 0:
+                    raise Exception(f'Process  terminated by signal {exit_code}')
+                if exit_code > 0:
+                    if p.is_alive():
+                        p.terminate()
+                    raise Exception(f'Some exception occured in function {f.__name__}. The return code is {exit_code}')
+
+                else:
+                    r = recv_end.recv()
+                    if isinstance(r, Exception):
+                        raise r
+                    return r
+
+
+        except KeyboardInterrupt as ke:
+            alive = 'and is going to be terminated' if p.is_alive() else ''
+            logger.info(f'Process {p.pid} executing {f.__name__} got {ke.__class__.__name__} {alive}')
+            if p.is_alive():
+                p.terminate()
+            raise
+
+
+
+    return run
+
+async def write(file_handle=None, stream=None, offset=None):
+    data = await stream.read()
+    return await file_handle.write(data, offset=offset )
+
+
+from aiofile import async_open, AIOFile
+async def download_blob(temp_dir=None, conn_string=None, blob_path=None, event=None, nchunks=5 ):
+
+    async def progress(current, total)->None:
+        n = current/total*100
+        #if n % 10 == 2 and n/10 == 0:
+        logger.info(f'download status for {blob_path} - {n:.2f}%' )
+
+
+    container_name, *rest, file_name = blob_path.split("/")
+    logger.info(f'{container_name} - {file_name}')
+    container_rel_blob_path = os.path.join(*rest,file_name)
+    logger.info(f'{container_name} - {container_rel_blob_path}')
+    start = time.time()
+
+    dst_file = os.path.join(temp_dir, file_name)
+    async with AContainerClient.from_connection_string(conn_string, container_name,
+                                                       max_single_get_size=1*128*1024*1024,
+                                                       max_chunk_get_size=4*1024*1024 ) as cc:
+        src_blob = cc.get_blob_client(container_rel_blob_path)
+        src_props = await src_blob.get_blob_properties()
+        size = src_props.size
+        content_type = src_props.content_settings
+        logger.info(f'Blob size is {size} {content_type} ')
+
+        if nchunks:
+            async with AIOFile(dst_file, 'wb') as dstf:
+                chunk_size = size//nchunks
+                offsets = [i for i in range(0, size-chunk_size, chunk_size)]
+                lengths = [chunk_size] * (nchunks-1) + [size-chunk_size*(nchunks-1)]
+                tasks = list()
+                for offset, length in zip(offsets, lengths):
+                    chunk_stream=await cc.download_blob(container_rel_blob_path,
+                                                 max_concurrency=1,
+                                                 progress_hook=progress,
+                                                 offset=offset,
+                                                 length=length
+                                                 )
+                    tasks.append(
+                            asyncio.create_task(
+                                write(file_handle=dstf,stream=chunk_stream,offset=offset
+                            )
+                        )
+                    )
+                results = await asyncio.gather(*tasks)
+                assert results==lengths
+        else:
+            with open(dst_file, 'wb') as dstf:
+                stream = await cc.download_blob(container_rel_blob_path,
+                                                max_concurrency=8,
+                                                progress_hook=progress,
+
+                                                )
+                stream.readinto(dstf)
+
+
+    end = time.time()
+
+    logger.info(f'download lasted {(end-start)/60 } minutes ')
+    return dst_file
+def download_blob_sync(conn_string=None, blob_path=None, in_chunks=False):
+
+    def progress(current, total)->None:
+        logger.info(f'download status for {blob_path} - {current/total*100:.2f}%' )
+
+
+    container_name, *rest, file_name = blob_path.split("/")
+    logger.info(f'{container_name} - {file_name}')
+    container_rel_blob_path = os.path.join(*rest,file_name)
+    logger.info(f'{container_name} - {container_rel_blob_path}')
+    start = time.time()
+    with tempfile.TemporaryDirectory() as temp_dir:
+        dst_file = os.path.join(temp_dir, file_name)
+        with ContainerClient.from_connection_string(conn_string, container_name ) as cc:
+            with open(dst_file, 'wb') as dstf:
+                stream = cc.download_blob(container_rel_blob_path, max_concurrency=8, progress_hook=progress)
+                if in_chunks:
+                    for chunk in stream.chunks():
+                        dstf.write(chunk)
+                else:
+                    stream.readinto(dstf)
+    end = time.time()
+
+    logger.info(f'download lasted {(end-start)/60 } minutes ')
 
 
 

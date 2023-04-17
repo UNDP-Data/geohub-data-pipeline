@@ -36,7 +36,7 @@ async def main(fpath=None)->None:
     ingest_fut.set_name('ingest')
 
 
-    INGEST_TIMEOUT = 3600
+    INGEST_TIMEOUT = 200
     done, pending = await asyncio.wait( [long_fut, ingest_fut], return_when=asyncio.FIRST_COMPLETED,
         timeout=INGEST_TIMEOUT,
     )
@@ -81,8 +81,9 @@ if __name__ == '__main__':
     logger.handlers.clear()
     logger.addHandler(sthandler)
     logger.name = __name__
+    logger.setLevel(logging.INFO)
     fpath = '/data/File_GeoHub_Geodatabase.gdb'
-    #fpath = '/vsizip/data/featuredataset.gdb.zip'
+    #fpath = "/vsizip/data/featuredataset.gdb.zip"
     fpath = '/data/Sample.gpkg'
     #fpath = '/data/Percent_electricity_access_2012.tif'
     #fpath = '/data/devel.tif'
