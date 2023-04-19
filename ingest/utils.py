@@ -9,7 +9,6 @@ from azure.storage.blob import ContainerClient
 import json
 import datetime
 import multiprocessing
-from functools import wraps
 from ingest.config import (
     # account_url,
     # connection_string,
@@ -17,6 +16,8 @@ from ingest.config import (
     datasets_folder,
     raw_folder,
 )
+
+from aiofile import  AIOFile
 from ingest.config import GDAL_ARCHIVE_FORMATS
 from ingest.ingest_exceptions import ClientRequestError, ResourceNotFoundError
 
@@ -25,10 +26,10 @@ logger = logging.getLogger(__name__)
 
 def prepare_blob_path(blob_path: str) -> str:
     """
-    Safely xtract relative path of the blob from its url using urllib
+    Safely extract relative path of the blob from its url using urllib
     """
     return urlparse(blob_path).path[1:] # 1 is to exclude the start slash/path separator
-    # because the os.path.join disregards any
+    # because the os.path.join disregards any args that start with path sep
 
 
 def prepare_vsiaz_path(blob_path: str) -> str:
@@ -190,81 +191,68 @@ async def handle_lock(receiver=None, message=None):
             lu = message.locked_until_utc
             n = datetime.datetime.utcnow()
             d = int((lu.replace(tzinfo=n.tzinfo)-n).total_seconds())
-            logger.debug(f'locked until {lu} utc now is {n} lock expired {message._lock_expired} and will expire in  {d}')
+            #logger.debug(f'locked until {lu} utc now is {n} lock expired {message._lock_expired} and will expire in  {d}')
             if d < 10:
-                logger.info('renewing lock')
+                logger.debug('renewing lock')
                 await receiver.renew_message_lock(message=message,)
             await asyncio.sleep(1)
     except Exception as e:
         logger.error(f'hl error {e}')
 
-def upload_blob(src_path=None, connection_string=None, container_name=None,
-                dst_blob_path=None,overwrite=True,max_concurrency=8 ):
-
-
+def upload_blob(src_path:str=None, connection_string:str=None, container_name:str=None,
+                dst_blob_path:str=None,overwrite:bool=True,max_concurrency:int=8 )->None:
+    """
+    Uploads the src_path file to Azure dst_blob_path located in container_name
+    @param src_path: str, source file
+    @param connection_string: strm the Azure storage account  connection string
+    @param container_name: str, container name
+    @param dst_blob_path: relative path to the container  where the src_path will be uploaded
+    @param overwrite: bool
+    @param max_concurrency: 8
+    @return:  None
+    """
 
     with BlobServiceClient.from_connection_string(connection_string) as blob_service_client:
         with blob_service_client.get_blob_client(container=container_name, blob=dst_blob_path) as blob_client:
             with open(src_path, "rb") as upload_file:
                 blob_client.upload_blob(upload_file, overwrite=overwrite, max_concurrency=max_concurrency)
-            logger.info(f"Successfully wrote PMTiles to {dst_blob_path}")
+    logger.info(f"Successfully wrote PMTiles to {dst_blob_path}")
 
-
-def run_as_process(f):
-    """
-    Decorator to run any function inside a separate process. Allows to timeout the  execution.
-    Ideally the called function handles gracefully the exceptions by wrapping them inside the com_pipe object
-
-    :param f:
-    :return:
-    """
-    @wraps(f)
-    def run(*args,  **kwargs):
-        try:
-            timeout = kwargs.get('timeout') if 'timeout' in kwargs else 1
-            recv_end, send_end = multiprocessing.Pipe(False) #  one way only
-            kwargs.update({'com_pipe':send_end})
-            p = multiprocessing.Process(target=f, name=f.__name__, args=args, kwargs=kwargs)
-            p.start()
-            p.join(timeout)
-            exit_code = p.exitcode
-            #logger.info(f'Process {p.name} has exitcode {exit_code}')
-            if exit_code is None:
-                sec_label = 'seconds' if timeout > 1 else 'second'
-                raise multiprocessing.TimeoutError(f'The function {f.__name__} did not complete successfully in {timeout} {sec_label} with kwargs {kwargs}')
-            else:
-                if exit_code < 0:
-                    raise Exception(f'Process  terminated by signal {exit_code}')
-                if exit_code > 0:
-                    if p.is_alive():
-                        p.terminate()
-                    raise Exception(f'Some exception occured in function {f.__name__}. The return code is {exit_code}')
-
-                else:
-                    r = recv_end.recv()
-                    if isinstance(r, Exception):
-                        raise r
-                    return r
-
-
-        except KeyboardInterrupt as ke:
-            alive = 'and is going to be terminated' if p.is_alive() else ''
-            logger.info(f'Process {p.pid} executing {f.__name__} got {ke.__class__.__name__} {alive}')
-            if p.is_alive():
-                p.terminate()
-            raise
-
-
-
-    return run
 
 async def write(file_handle=None, stream=None, offset=None):
     data = await stream.read()
     return await file_handle.write(data, offset=offset )
 
 
-from aiofile import async_open, AIOFile
+
+async def write_chunked(file_handle=None, stream=None, offset=None, length=None, event=None, chunk_no=None,):
+    nwritten = 0
+    async for chunk in stream.chunks():
+        chunk_len = len(chunk)
+        chunk_offset = offset+chunk_len
+        ncwritten = await file_handle.write(chunk, offset=chunk_offset )
+        nwritten+=ncwritten
+        logger.info(f'downloaded {(nwritten/length)*100:.2f}% in chunk {chunk_no}')
+
+        if event and event.is_set():
+            raise TimeoutError(f'Partial download has timed out in chunk {chunk_no}')
+    return nwritten
+
+
 async def download_blob(temp_dir=None, conn_string=None, blob_path=None, event=None, nchunks=5 ):
+    """
+    Asynchronously download blob_path into temp_dir. Supports cancellation through event
+    argument. Can work in streaming mode or in concurrent chunked mode.
+
+    The chunked mode NEEDS to be tested before using
+
+    @param temp_dir:
+    @param conn_string:
+    @param blob_path:
+    @param event:
+    @param nchunks:
+    @return:
+    """
 
     async def progress(current, total)->None:
         n = current/total*100
@@ -281,7 +269,7 @@ async def download_blob(temp_dir=None, conn_string=None, blob_path=None, event=N
     dst_file = os.path.join(temp_dir, file_name)
     async with AContainerClient.from_connection_string(conn_string, container_name,
                                                        max_single_get_size=1*128*1024*1024,
-                                                       max_chunk_get_size=4*1024*1024 ) as cc:
+                                                       max_chunk_get_size=16*1024*1024 ) as cc:
         src_blob = cc.get_blob_client(container_rel_blob_path)
         src_props = await src_blob.get_blob_properties()
         size = src_props.size
@@ -294,7 +282,8 @@ async def download_blob(temp_dir=None, conn_string=None, blob_path=None, event=N
                 offsets = [i for i in range(0, size-chunk_size, chunk_size)]
                 lengths = [chunk_size] * (nchunks-1) + [size-chunk_size*(nchunks-1)]
                 tasks = list()
-                for offset, length in zip(offsets, lengths):
+                for chunk_no, item in enumerate(zip(offsets, lengths), start=1):
+                    offset, length = item
                     chunk_stream=await cc.download_blob(container_rel_blob_path,
                                                  max_concurrency=1,
                                                  progress_hook=progress,
@@ -303,50 +292,83 @@ async def download_blob(temp_dir=None, conn_string=None, blob_path=None, event=N
                                                  )
                     tasks.append(
                             asyncio.create_task(
-                                write(file_handle=dstf,stream=chunk_stream,offset=offset
+                                write_chunked(file_handle=dstf,
+                                              stream=chunk_stream,
+                                              offset=offset,
+                                              length=length,
+                                              chunk_no=chunk_no,
+                                              event=event
                             )
                         )
                     )
+
                 results = await asyncio.gather(*tasks)
                 assert results==lengths
         else:
             with open(dst_file, 'wb') as dstf:
+                await close_container_client(cc=cc, event=event)
                 stream = await cc.download_blob(container_rel_blob_path,
                                                 max_concurrency=8,
                                                 progress_hook=progress,
 
                                                 )
-                stream.readinto(dstf)
+                await stream.readinto(dstf)
 
 
     end = time.time()
 
     logger.info(f'download lasted {(end-start)/60 } minutes ')
     return dst_file
-def download_blob_sync(conn_string=None, blob_path=None, in_chunks=False):
-
-    def progress(current, total)->None:
-        logger.info(f'download status for {blob_path} - {current/total*100:.2f}%' )
 
 
-    container_name, *rest, file_name = blob_path.split("/")
-    logger.info(f'{container_name} - {file_name}')
+async def close_container_client(cc=None, event=None):
+    """
+    Monitor the event in an infinite loop and
+    closes the client whenever the event is set
+    @param cc: instance of  sync ContainerClient
+    @param event: multiprocessing.Event
+    @return: None
+    """
+    while True:
+        if event and event.is_set():
+            if isinstance(cc, AContainerClient):
+                await cc.close()
+            else:
+                cc.close()
+            logger.info(f'Cancelling download ')
+            raise asyncio.CancelledError()
+        await asyncio.sleep(1)
+
+def download_blob_sync(src_blob_path=None, local_folder=None, conn_string=None, event=None)->str:
+    """
+    Download the src_blob_path into the local_folder
+    @param src_blob_path: str, the full relative path (including the container) to the blob file
+    @param local_folder: str, abs path to a local folder where the src_blob_path will be downloaded
+    @param conn_string: str, the connections string to the azure storage account
+    @param event: multiprocessing.Event instance to be used signal cancellation
+    @return: str, the abs path to the downloaded  file
+
+    The  downloading is parallelized and streamed. Because of this it is not possible to
+    cancel it. Thus, an async function is also started that takes two arguments, the ContainerClient instance
+    and the event object and raises an asyncio.CancelledError in case the main script has timed out
+
+    """
+
+
+    def _progress_(current, total)->None:
+        logger.info(f'download status for {src_blob_path} - {current/total*100:.2f}%' )
+
+    container_name, *rest, file_name = src_blob_path.split("/")
     container_rel_blob_path = os.path.join(*rest,file_name)
-    logger.info(f'{container_name} - {container_rel_blob_path}')
-    start = time.time()
-    with tempfile.TemporaryDirectory() as temp_dir:
-        dst_file = os.path.join(temp_dir, file_name)
+    dst_file = os.path.join(local_folder, file_name)
+    with open(dst_file, 'wb') as dstf:
         with ContainerClient.from_connection_string(conn_string, container_name ) as cc:
-            with open(dst_file, 'wb') as dstf:
-                stream = cc.download_blob(container_rel_blob_path, max_concurrency=8, progress_hook=progress)
-                if in_chunks:
-                    for chunk in stream.chunks():
-                        dstf.write(chunk)
-                else:
-                    stream.readinto(dstf)
-    end = time.time()
+            asyncio.run(close_container_client(cc=cc, event=event))
+            stream = cc.download_blob(container_rel_blob_path, max_concurrency=8, progress_hook=_progress_)
+            stream.readinto(dstf)
 
-    logger.info(f'download lasted {(end-start)/60 } minutes ')
+
+    return dst_file
 
 
 

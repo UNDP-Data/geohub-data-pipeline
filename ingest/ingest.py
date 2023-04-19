@@ -8,7 +8,7 @@ from traceback import print_exc
 from ingest.processing import process_geo_file
 from azure.servicebus.aio import AutoLockRenewer, ServiceBusClient
 from ingest.config import raw_folder, setup_env_vars
-
+import tempfile
 
 # from ingest.raster_to_cog import ingest_raster, ingest_raster_sync
 from ingest.utils import (
@@ -61,17 +61,17 @@ async def ingest_message():
                     for msg in received_msgs:
                         try:
                             msg_str = json.loads(str(msg))
-                            blob_path, token = msg_str.split(";")
-                            if not 'District' in blob_path:continue
+                            blob_url, token = msg_str.split(";")
+                            if not 'District' in blob_url:continue
                             logger.info(
-                                f"Received blob: {blob_path} from queue"
+                                f"Received blob: {blob_url} from queue"
                             )
 
                             async with AutoLockRenewer() as auto_lock_renewer:
                                 auto_lock_renewer.register(
                                     receiver=receiver, renewable=msg
                                 )
-                                if f"/{raw_folder}/" in blob_path:
+                                if f"/{raw_folder}/" in blob_url:
                                     """
                                     First, it looks like the max_lock_renewal_duration arg is not working as it should be,
                                     or, I have no idea how to use it properly. So far the queue has been honouring the
@@ -95,14 +95,14 @@ async def ingest_message():
                                     
                                     """
 
-                                    logger.info(f'Handling done tasks')
+
 
 
 
 
                                     ingest_event = multiprocessing.Event()
                                     ingest_task = asyncio.ensure_future(
-                                        asyncio.to_thread(sync_ingest, blob_path=blob_path, event=ingest_event, conn_string=AZ_STORAGE_CONN_STR )
+                                        asyncio.to_thread(sync_ingest, blob_path=blob_url, event=ingest_event, conn_string=AZ_STORAGE_CONN_STR )
                                     )
                                     ingest_task.set_name('ingest')
                                     lock_task = asyncio.ensure_future(
@@ -118,7 +118,7 @@ async def ingest_message():
                                     if len(done) == 0:
                                         logger.info(f'Ingest has timed out after {INGEST_TIMEOUT} seconds.')
                                         ingest_event.set()
-
+                                    logger.info(f'Handling done tasks')
                                     for done_future in done:
                                         try:
                                             res = await done_future
@@ -161,10 +161,10 @@ async def ingest_message():
 
                                 else:
                                     logger.info(
-                                        f"Skipping {blob_path} because it is not in the {raw_folder} folder"
+                                        f"Skipping {blob_url} because it is not in the {raw_folder} folder"
                                     )
                                     #await receiver.complete_message(msg)
-                                    logger.info(f"Completed message for: {blob_path}")
+                                    logger.info(f"Completed message for: {blob_url}")
 
                         except Exception as pe: # this  first level might be redundant
                             with StringIO() as m:
@@ -178,31 +178,30 @@ async def ingest_message():
                             #continue
 
 
-def sync_ingest(blob_path: str, token=None, event=None, conn_string=None):
+def sync_ingest(blob_url: str = None, token=None, event=None, conn_string=None):
     """
     Ingest a geospatial data file potentially containing multiple layers
     into geohub
     Follows exactly https://github.com/UNDP-Data/geohub/discussions/545
 
     """
-    logger.info(f"Starting to ingest {blob_path}")
+    logger.info(f"Starting to ingest {blob_url}")
     # if the file is a pmtiles file, return without ingesting, copy to datasets
-    container_blob_path = prepare_blob_path(blob_path)
+    blob_path = prepare_blob_path(blob_url)
 
-
-
-    if blob_path.endswith(".pmtiles"):
-        asyncio.run(copy_raw2datasets(raw_blob_path=container_blob_path))
+    if blob_url.endswith(".pmtiles"):
+        asyncio.run(copy_raw2datasets(raw_blob_path=blob_path))
     else:
         #vsiaz_path = prepare_vsiaz_path(container_blob_path)
-        try:
-
-            process_geo_file(vsiaz_blob_path=container_blob_path, join_vector_tiles=False, event=event, conn_string=conn_string)
-            logger.info(f"Finished ingesting {blob_path}")
-        except Exception as e:
-            logger.error(e)
-            # csv attempt
-
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_data_file = download_blob_sync(
+                temp_dir=temp_dir,
+                conn_string=conn_string,
+                blob_path=blob_path,
+                event=event
+            )
+            process_geo_file(src_file_path=temp_data_file, join_vector_tiles=False, event=event, conn_string=conn_string)
+            logger.info(f"Finished ingesting {blob_url}")
 
 
 

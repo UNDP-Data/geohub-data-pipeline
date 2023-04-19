@@ -1,23 +1,26 @@
-import asyncio
+
 import io
 import multiprocessing
 import os.path
 import json
-import threading
-
 from osgeo import gdal, osr, ogr
 from pmtiles.reader import Reader, MmapSource
 import typing
 import tempfile
 from ingest.config import gdal_configs
 from rio_cogeo import cog_validate
-import threading
+
 import logging
 import time
-from ingest.utils import download_blob
+from ingest.utils import (
+    download_blob,
+    download_blob_sync,
+    upload_blob
+)
 
 from traceback import print_exc
-# from ingest.utils import upload_error_blob
+
+
 gdal.UseExceptions()
 import subprocess
 
@@ -35,6 +38,13 @@ for varname, varval in config.items():
 
 
 def should_reproject(src_srs: osr.SpatialReference = None, dst_srs: osr.SpatialReference = None):
+    """
+    Decides if two projections are equal
+    @param src_srs:  the source projection
+    @param dst_srs: the dst projection
+    @return: bool, True if the source  is different then dst else false
+    If the src is ESPG:4326 or EPSG:3857  returns  False
+    """
     auth_code_func_name = ".".join([osr.SpatialReference.GetAuthorityCode.__module__, osr.SpatialReference.GetAuthorityCode.__name__])
     is_same_func_name = ".".join([osr.SpatialReference.IsSame.__module__, osr.SpatialReference.IsSame.__name__])
     if int(dst_srs.GetAuthorityCode(None)) == 3857 or int(dst_srs.GetAuthorityCode(None)) == 4326:return False
@@ -76,7 +86,6 @@ def tippecanoe(tippecanoe_cmd:str =None, event=None):
         # the error is going to show up on stdout as it is redirected in the Popen
         err = None
         with proc.stdout:
-            start = time.time()
             stream = io.open(proc.stdout.fileno()) # this will really make it streamabale
             while proc.poll() is None:
                 output = stream.readline().strip('\r').strip('\n')
@@ -166,8 +175,16 @@ def dataset2fgb(fgb_dir: str = None,
 
     return converted_layers
 
-def fgb2pmtiles(fgb_layers=None, pmtiles_file_name=None, event=None):
-
+def fgb2pmtiles(fgb_layers:typing.Dict[str,str]=None, pmtiles_file_name:str=None, event=multiprocessing.Event, conn_string:str=None):
+    """
+    Converts all FlatGeobuf files from fgb_layers dict into PMtile format and uploads the result to Azure
+    blob. Supports cancelation through event arg
+    @param fgb_layers: a dict where the key is tyhe layer name and the value is the abs path to the FlatGeobuf file
+    @param pmtiles_file_name: the name of the output PMTiles file. If supplied all layers will be added to this file
+    @param event: arg to signalize to Tippecanoe a timeout/interrupt
+    @param conn_string: the connection string used t connect to the Azure storage account
+    @return:
+    """
 
     if pmtiles_file_name is None:
         for layer_name, fgb_layer_path in fgb_layers.items():
@@ -198,6 +215,7 @@ def fgb2pmtiles(fgb_layers=None, pmtiles_file_name=None, event=None):
                     assert layer_name in  [vl["id"] for vl in mdict["vector_layers"]], f'{layer_name} is not present in {layer_pmtiles_path} PMTiles file.'
                 logger.info(f'Created single layer PMtiles file {layer_pmtiles_path}')
                 #upload layer_pmtiles_path to azure
+
 
             except subprocess.TimeoutExpired as te:
                 logger.error(f'Conversion of layer {layer_name} from {fgb_layer_path} to PMtiles  has timed out.')
@@ -264,13 +282,37 @@ def fgb2pmtiles(fgb_layers=None, pmtiles_file_name=None, event=None):
 
 
 
-def dataset2pmtiles(src_ds=None, layers=None, pmtiles_file_name=None, event=None):
+def dataset2pmtiles(src_ds:gdal.Dataset=None,
+                    layers:typing.List[str] = None,
+                    conn_string:str=None,
+                    pmtiles_file_name:typing.Optional[str]=None,
+                    event:multiprocessing.Event=None):
+    """
+    Converts the layer/s contained in src_ds GDAL dataset  to PMTiles and uploads them to Azure
 
+    @param src_ds: instance of GDAL Dataset
+    @param layers: iter or layer/s name/s
+    @param conn_string: Azure storage account connection string
+    @param pmtiles_file_name: optional, the output PMtiles file name. If supplied all vector layers
+    will ve stored in one multilayer PMTile file
+    @param event: instance of multiprocessing.Event used to interrupt the processing
+    @return: None
+
+    The conversion is implemented in two stages
+
+    1. every layer is converted into a FlatGeobuf file. A FlaGeobuf file supports only one layer.
+    2. FGB files are converted to PMTiles using tippecanoe
+        a) if pmtiles_file_name arg is supplied a multilayer OMTile file is created
+        b) else each layer is extracted to it;s own OMTiles file
+
+    Last, the PMTile files are uploaded to Azure
+
+    """
 
     with tempfile.TemporaryDirectory() as temp_dir:
         fgb_layers = dataset2fgb(fgb_dir=temp_dir, src_ds=src_ds, layers=layers, event=event)
         if fgb_layers:
-            fgb2pmtiles(fgb_layers=fgb_layers, pmtiles_file_name=pmtiles_file_name, event=event)
+            fgb2pmtiles(fgb_layers=fgb_layers, pmtiles_file_name=pmtiles_file_name, event=event, conn_string=conn_string)
 
 
 
@@ -360,113 +402,120 @@ def gdal_open_safe(path:str=None, data_type=None)-> gdal.Dataset:
     return  gdal.OpenEx(path, data_type )
 
 
-def process_geo_file(vsiaz_blob_path: str = None, join_vector_tiles=None, conn_string=None, event:multiprocessing.Event=None):
-    assert vsiaz_blob_path not in ['', None], f'Invalid geospatial data file path: {vsiaz_blob_path}'
+def process_geo_file(   src_file_path: str = None, join_vector_tiles:bool=False,
+                        conn_string:str=None, event:multiprocessing.Event=None
+                    ):
+    """
+    Converts the vector layers from the input src_file_path to PMtiles and the raster bands to
+    COGs.  In case errors are encountered an error blob containing the error message is uploaded.
+    If the conversion is successful the output files are uploaded to Azure.
 
-    with tempfile.TemporaryDirectory() as temp_dir:
+    @param src_file_path:
+    @param join_vector_tiles:
+    @param conn_string:
+    @param event:
+    @return:
+    """
+    assert src_file_path not in ['', None], f'Invalid geospatial data file path: {src_file_path}'
+
+
+    try:
+
+        # handle vectors first
+        logger.info(f'Opening {src_file_path}')
         try:
-            temp_data_file = asyncio.run(download_blob(temp_dir=temp_dir,
-                                      conn_string=conn_string,
-                                      blob_path=vsiaz_blob_path,
-                                      event=event, in_chunks=True)
-                        )
-            vsiaz_blob_path = temp_data_file
-            #download_blob_sync(conn_string=AZ_STORAGE_CONN_STR,blob_path=container_blob_path)
-            # handle vectors first
-            logger.info(f'Opening {vsiaz_blob_path}')
-            try:
-                vdataset = gdal.OpenEx(vsiaz_blob_path, gdal.OF_VECTOR )
-            except RuntimeError as ioe:
-                if 'supported' in str(ioe):
-                    vdataset = None
-                else:
-                    raise
-
-            if vdataset is not None:
-                logger.info(f'Opened {vsiaz_blob_path} with {vdataset.GetDriver().ShortName} vector driver')
-                logger.info(f'Found {vdataset.GetLayerCount()} vector layers')
-                layer_names = [vdataset.GetLayerByIndex(i).GetName() for i in range(vdataset.GetLayerCount())]
-                if not join_vector_tiles:
-                    for layer_name in layer_names:
-                        logger.info(f'Ingesting vector layer "{layer_name}"')
-                        dataset2pmtiles(src_ds=vdataset, layers=[layer_name],event=event)
-                else:
-
-                    logger.info(f'Ingesting all vector layers into one multilayer PMtiles file')
-                    _, file_name = os.path.split(vdataset.GetDescription())
-                    fname, ext = os.path.splitext(file_name)
-                    dataset2pmtiles(src_ds=vdataset, layers=layer_names, pmtiles_file_name=fname, event=event)
-
-                del vdataset
+            vdataset = gdal.OpenEx(src_file_path, gdal.OF_VECTOR)
+        except RuntimeError as ioe:
+            if 'supported' in str(ioe):
+                vdataset = None
             else:
-                logger.info(f"{vsiaz_blob_path} does not contain vector GIS data")
+                raise
+
+        if vdataset is not None:
+            logger.info(f'Opened {src_file_path} with {vdataset.GetDriver().ShortName} vector driver')
+            logger.info(f'Found {vdataset.GetLayerCount()} vector layers')
+            layer_names = [vdataset.GetLayerByIndex(i).GetName() for i in range(vdataset.GetLayerCount())]
+            if not join_vector_tiles:
+                for layer_name in layer_names:
+                    logger.info(f'Ingesting vector layer "{layer_name}"')
+                    dataset2pmtiles(src_ds=vdataset, layers=[layer_name],event=event, conn_string=conn_string)
+            else:
+
+                logger.info(f'Ingesting all vector layers into one multilayer PMtiles file')
+                _, file_name = os.path.split(vdataset.GetDescription())
+                fname, ext = os.path.splitext(file_name)
+                dataset2pmtiles(src_ds=vdataset, layers=layer_names, pmtiles_file_name=fname, event=event, conn_string=conn_string)
+
+            del vdataset
+        else:
+            logger.info(f"{src_file_path} does not contain vector GIS data")
 
 
-            try:
-                rdataset = gdal.OpenEx(vsiaz_blob_path, gdal.OF_RASTER)
-            except RuntimeError as ioe:
-                if 'supported' in str(ioe):
-                    rdataset = None
-                else:
-                    raise
+        try:
+            rdataset = gdal.OpenEx(src_file_path, gdal.OF_RASTER)
+        except RuntimeError as ioe:
+            if 'supported' in str(ioe):
+                rdataset = None
+            else:
+                raise
 
-            if rdataset is None:
-                logger.info(f"{vsiaz_blob_path} does not contain raster GIS data")
-                return
-            logger.info(f'Opening {vsiaz_blob_path} with {rdataset.GetDriver().ShortName} raster driver')
-            # some formats will have subdatasets like ESRI geodatabase (according to docs) or NetCDF
-            nraster_bands = rdataset.RasterCount
-
-
-            # Driver.getMetadataItem(gdal.DCAP_SUBTADASETS) is not reliable so it is better to try
-
-            for sdb in rdataset.GetSubDatasets():
-                subdataset_path, subdataset_descr = sdb
-                subds = gdal.Open(subdataset_path.replace('\"', ''))
-                #logger.info(f'Opening raster subdataset {subdataset_descr} featuring {subds.RasterCount} bands')
-                subds_bands = [b + 1 for b in range(subds.RasterCount)]
-                subds_colorinterp = []
-                if subds_bands:
-                    subds_colorinterp = [subds.GetRasterBand(b).GetColorInterpretation() for b in subds_bands]
-                subds_photometric = subds.GetMetadataItem('PHOTOMETRIC')
-                subds_no_colorinterp_bands = len(subds_colorinterp)
-
-                # create cog_path, usually  it is a temp
-                if subds_no_colorinterp_bands >= 3 or subds_photometric is not None:
-                    logger.info(f'Ingesting multiband subdataset {subdataset_path}')
-                    dataset2cog(src_ds=subds,event=event)
-                else:
-                    for band_no in subds_bands:
-                        logger.info(f'Ingesting band {band_no} from {subdataset_path}')
-                        dataset2cog(src_ds=subds, bands=[band_no], event=event)
+        if rdataset is None:
+            logger.info(f"{src_file_path} does not contain raster GIS data")
+            return
+        logger.info(f'Opening {src_file_path} with {rdataset.GetDriver().ShortName} raster driver')
+        # some formats will have subdatasets like ESRI geodatabase (according to docs) or NetCDF
+        nraster_bands = rdataset.RasterCount
 
 
-                del subds
+        # Driver.getMetadataItem(gdal.DCAP_SUBTADASETS) is not reliable so it is better to try
 
-            if nraster_bands:  # raster data is located at root
-                bands = [b + 1 for b in range(nraster_bands)]
-                colorinterp = []
-                if bands:
-                    colorinterp = [rdataset.GetRasterBand(b).GetColorInterpretation() for b in bands]
-                no_colorinterp_bands = len(colorinterp)
-                photometric = rdataset.GetMetadataItem('PHOTOMETRIC')
-                if max(colorinterp) >= 3 or photometric is not None:
-                    logger.info(f'Ingesting multiband dataset {vsiaz_blob_path}')
-                    dataset2cog(src_ds=rdataset, event=event)
+        for sdb in rdataset.GetSubDatasets():
+            subdataset_path, subdataset_descr = sdb
+            subds = gdal.Open(subdataset_path.replace('\"', ''))
+            #logger.info(f'Opening raster subdataset {subdataset_descr} featuring {subds.RasterCount} bands')
+            subds_bands = [b + 1 for b in range(subds.RasterCount)]
+            subds_colorinterp = []
+            if subds_bands:
+                subds_colorinterp = [subds.GetRasterBand(b).GetColorInterpretation() for b in subds_bands]
+            subds_photometric = subds.GetMetadataItem('PHOTOMETRIC')
+            subds_no_colorinterp_bands = len(subds_colorinterp)
+
+            # create cog_path, usually  it is a temp
+            if subds_no_colorinterp_bands >= 3 or subds_photometric is not None:
+                logger.info(f'Ingesting multiband subdataset {subdataset_path}')
+                dataset2cog(src_ds=subds,event=event)
+            else:
+                for band_no in subds_bands:
+                    logger.info(f'Ingesting band {band_no} from {subdataset_path}')
+                    dataset2cog(src_ds=subds, bands=[band_no], event=event)
 
 
-                else:
-                    logger.info(f'Found {nraster_bands} rasters')
-                    for band_no in bands:
-                        #cog_path = prepare_cog_path(path=vsiaz_blob_path, band=band_no)
-                        logger.info(f'Ingesting band {band_no} from {vsiaz_blob_path}')
-                        dataset2cog(src_ds=rdataset, bands=[band_no], event=event)
+            del subds
 
-            del rdataset
+        if nraster_bands:  # raster data is located at root
+            bands = [b + 1 for b in range(nraster_bands)]
+            colorinterp = []
+            if bands:
+                colorinterp = [rdataset.GetRasterBand(b).GetColorInterpretation() for b in bands]
+            no_colorinterp_bands = len(colorinterp)
+            photometric = rdataset.GetMetadataItem('PHOTOMETRIC')
+            if max(colorinterp) >= 3 or photometric is not None:
+                logger.info(f'Ingesting multiband dataset {src_file_path}')
+                dataset2cog(src_ds=rdataset, event=event)
 
-        except Exception as e:
-            if 'vdataset' in locals(): del vdataset
-            if 'rdataset' in locals(): del rdataset
-            raise
+
+            else:
+                logger.info(f'Found {nraster_bands} rasters')
+                for band_no in bands:
+                    #cog_path = prepare_cog_path(path=vsiaz_blob_path, band=band_no)
+                    logger.info(f'Ingesting band {band_no} from {src_file_path}')
+                    dataset2cog(src_ds=rdataset, bands=[band_no], event=event)
+
+        del rdataset
+
+    except Exception as e:
+        if 'vdataset' in locals(): del vdataset
+        if 'rdataset' in locals(): del rdataset
+        raise
 
 
