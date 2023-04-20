@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os.path
 import tempfile
+import threading
 import time
 from urllib.parse import urlparse
 from azure.storage.blob.aio import BlobLeaseClient, BlobServiceClient, ContainerClient as AContainerClient
@@ -244,7 +245,7 @@ async def download_blob(temp_dir=None, conn_string=None, blob_path=None, event=N
     Asynchronously download blob_path into temp_dir. Supports cancellation through event
     argument. Can work in streaming mode or in concurrent chunked mode.
 
-    The chunked mode NEEDS to be tested before using
+    NB:The chunked mode NEEDS to be tested before using
 
     @param temp_dir:
     @param conn_string:
@@ -338,18 +339,42 @@ async def close_container_client(cc=None, event=None):
             logger.info(f'Cancelling download ')
             raise asyncio.CancelledError()
         await asyncio.sleep(1)
+        logger.info('dworking')
 
-def download_blob_sync(src_blob_path=None, local_folder=None, conn_string=None, event=None)->str:
+
+def close_cc(cc=None, timeout_event:multiprocessing.Event=None, stop_download:multiprocessing.Event=None):
+    """
+    Monitor the event in an infinite loop and
+    closes the client whenever the event is set
+    @param cancel_download:
+    @param timeout_event:
+    @param ingest_event:
+    @param cc: instance of  sync ContainerClient
+    @return: None
+    """
+    while True:
+        if stop_download and stop_download.is_set():
+            logger.debug('Stop download monitor')
+            return
+        if (timeout_event and timeout_event.is_set()):
+            cc.close()
+            raise StopIteration()
+
+        time.sleep(1)
+
+
+def download_blob_sync(src_blob_path=None, local_folder=None, conn_string=None, timeout_event:multiprocessing.Event=None)->str:
     """
     Download the src_blob_path into the local_folder
+    @param timeout_download: object used  to signal timeout
     @param src_blob_path: str, the full relative path (including the container) to the blob file
     @param local_folder: str, abs path to a local folder where the src_blob_path will be downloaded
     @param conn_string: str, the connections string to the azure storage account
-    @param event: multiprocessing.Event instance to be used signal cancellation
+    @param event: object used signal cancellation
     @return: str, the abs path to the downloaded  file
 
     The  downloading is parallelized and streamed. Because of this it is not possible to
-    cancel it. Thus, an async function is also started that takes two arguments, the ContainerClient instance
+    cancel it. Thus, a  monitor function is also started in a thread that takes three arguments, the ContainerClient instance
     and the event object and raises an asyncio.CancelledError in case the main script has timed out
 
     """
@@ -362,10 +387,26 @@ def download_blob_sync(src_blob_path=None, local_folder=None, conn_string=None, 
     container_rel_blob_path = os.path.join(*rest,file_name)
     dst_file = os.path.join(local_folder, file_name)
     with open(dst_file, 'wb') as dstf:
-        with ContainerClient.from_connection_string(conn_string, container_name ) as cc:
-            asyncio.run(close_container_client(cc=cc, event=event))
-            stream = cc.download_blob(container_rel_blob_path, max_concurrency=8, progress_hook=_progress_)
-            stream.readinto(dstf)
+        stop_download = multiprocessing.Event()
+        try:
+            with ContainerClient.from_connection_string(conn_string, container_name ) as cc:
+                cl = cc.get_blob_client(container_rel_blob_path)
+                blob_exists = cl.exists()
+                logger.info(f'does blob {container_rel_blob_path} exist?: {blob_exists}')
+                if not blob_exists:
+                    raise FileExistsError(f'{container_rel_blob_path} does not exist in container "{container_name}"')
+                # prepare an start  the monitor function in a separate thread
+                monitor = threading.Thread(target=close_cc, name='monitor', kwargs=dict(timeout_event=timeout_event, stop_download=stop_download))
+                monitor.start()
+                logger.info(f'Starting download for {container_rel_blob_path}')
+                stream = cc.download_blob(container_rel_blob_path, max_concurrency=8, progress_hook=_progress_)
+                stream.readinto(dstf)
+                # stop monitor thread
+                stop_download.set()
+        except StopIteration: #unusual but to be 100% sure the right path is taken
+            raise TimeoutError(f'Downloading {container_rel_blob_path} has timed out ')
+
+
 
 
     return dst_file

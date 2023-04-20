@@ -33,7 +33,7 @@ sblogger.setLevel(logging.WARNING)
 
 setup_env_vars()
 
-INGEST_TIMEOUT = 3600  # 1 hours MAX
+INGEST_TIMEOUT = 200  # 1 hours MAX
 CONNECTION_STR = os.environ["SERVICE_BUS_CONNECTION_STRING"]
 QUEUE_NAME = os.environ["SERVICE_BUS_QUEUE_NAME"]
 AZ_STORAGE_CONN_STR = os.environ['AZURE_STORAGE_CONNECTION_STRING']
@@ -95,14 +95,9 @@ async def ingest_message():
                                     
                                     """
 
-
-
-
-
-
-                                    ingest_event = multiprocessing.Event()
+                                    timeout_event = multiprocessing.Event()
                                     ingest_task = asyncio.ensure_future(
-                                        asyncio.to_thread(sync_ingest, blob_path=blob_url, event=ingest_event, conn_string=AZ_STORAGE_CONN_STR )
+                                        asyncio.to_thread(sync_ingest, blob_url=blob_url, timeout_event=timeout_event, conn_string=AZ_STORAGE_CONN_STR )
                                     )
                                     ingest_task.set_name('ingest')
                                     lock_task = asyncio.ensure_future(
@@ -117,7 +112,7 @@ async def ingest_message():
                                     )
                                     if len(done) == 0:
                                         logger.info(f'Ingest has timed out after {INGEST_TIMEOUT} seconds.')
-                                        ingest_event.set()
+                                        timeout_event.set()
                                     logger.info(f'Handling done tasks')
                                     for done_future in done:
                                         try:
@@ -178,7 +173,7 @@ async def ingest_message():
                             #continue
 
 
-def sync_ingest(blob_url: str = None, token=None, event=None, conn_string=None):
+def sync_ingest(blob_url: str = None, token=None, timeout_event=None, conn_string=None):
     """
     Ingest a geospatial data file potentially containing multiple layers
     into geohub
@@ -195,41 +190,15 @@ def sync_ingest(blob_url: str = None, token=None, event=None, conn_string=None):
         #vsiaz_path = prepare_vsiaz_path(container_blob_path)
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_data_file = download_blob_sync(
-                temp_dir=temp_dir,
+                local_folder=temp_dir,
                 conn_string=conn_string,
-                blob_path=blob_path,
-                event=event
+                src_blob_path=blob_path,
+                timeout_event=timeout_event
             )
-            process_geo_file(src_file_path=temp_data_file, join_vector_tiles=False, event=event, conn_string=conn_string)
+            process_geo_file(src_file_path=temp_data_file, join_vector_tiles=False, timeout_event=timeout_event, conn_string=conn_string)
             logger.info(f"Finished ingesting {blob_url}")
 
 
 
-#
-# async def ingest(blob_path: str, token=None):
-#     """
-#     Ingest a geospatial data file potentially containing multiple layers
-#     into geohub
-#     Follows exactly https://github.com/UNDP-Data/geohub/discussions/545
-#
-#     """
-#     logger.info(f"Starting to ingest {blob_path}")
-#     # if the file is a pmtiles file, return without ingesting, copy to datasets
-#     container_blob_path = prepare_blob_path(blob_path)
-#
-#     if blob_path.endswith(".pmtiles"):
-#         await copy_raw2datasets(raw_blob_path=container_blob_path)
-#     else:
-#         vsiaz_path = prepare_vsiaz_path(container_blob_path)
-#         nrasters, nvectors = await gdal_open_async(vsiaz_path)
-#
-#         # 2 ingest
-#         if nrasters > 0:
-#             await ingest_raster(vsiaz_blob_path=vsiaz_path)
-#         if nvectors > 0:
-#             await ingest_vector(vsiaz_blob_path=vsiaz_path)
-#         # csv
-#
-#     logger.info(f"Finished ingesting {blob_path}")
 
 
