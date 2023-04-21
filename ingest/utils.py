@@ -6,8 +6,10 @@ import threading
 import time
 import typing
 from urllib.parse import urlparse
-from azure.storage.blob.aio import BlobLeaseClient, BlobServiceClient, ContainerClient as AContainerClient
-from azure.storage.blob import ContainerClient
+from azure.storage.blob.aio import BlobLeaseClient as ABlobLeaseClient, \
+    BlobServiceClient as ABlobServiceClient, \
+    ContainerClient as AContainerClient
+from azure.storage.blob import ContainerClient, BlobServiceClient
 import json
 import datetime
 import multiprocessing
@@ -60,12 +62,42 @@ def prepare_vsiaz_path(blob_path: str) -> str:
     return os.path.join(prefix, blob_path)
 
 
-def get_dst_blob_path(blob_path: str) -> str:
+def get_dst_blob_path(blob_path: str, file_name=None) -> str:
     dst_blob = blob_path.replace(f"/{raw_folder}/", f"/{datasets_folder}/")
-    file_name = blob_path.split("/")[-1]
+    file_name = file_name or blob_path.split("/")[-1]
     return f"{dst_blob}/{file_name}"
 
-async def upload_timeout_blob(blob_url: str, connection_string=None):
+
+def get_azure_blob_path(datafile_url=None, local_path=None ):
+
+    _, file_name = os.path.split(local_path)
+    raw_blob_path = chop_blob_url(datafile_url)
+    datasets_blob_path  = get_dst_blob_path(blob_path=raw_blob_path, file_name=file_name)
+    container_name, *rest, blob_name = datasets_blob_path.split("/")
+
+    return container_name, os.path.join(*rest, blob_name)
+
+
+
+
+def get_local_cog_path(src_path: str = None, dst_folder:str=None, band=None):
+
+    folders, fname = os.path.split(src_path)
+    fname_without_ext, ext = os.path.splitext(fname)
+    if src_path.count(':') == 2:
+        _, rpath, fname_without_ext = src_path.split(':')
+        folders, _ = os.path.split(rpath)
+        if '"' in fname_without_ext: fname_without_ext = fname_without_ext.replace('"', '')
+        if "'" in fname_without_ext: fname_without_ext = fname_without_ext.replace("'", '')
+
+    if not band:
+        return f'{os.path.join(dst_folder, f"{fname_without_ext}.tif")}'
+    else:
+        return f'{os.path.join(dst_folder, f"{fname_without_ext}_band{band}.tif")}'
+
+
+
+async def upload_timeout_blob(blob_url: str, connection_string=None, ):
     """
 
     @param blob_path:
@@ -80,7 +112,30 @@ async def upload_timeout_blob(blob_url: str, connection_string=None):
 
     try:
         # create the blob
-        async with BlobServiceClient.from_connection_string(connection_string) as blob_service_client:
+        async with ABlobServiceClient.from_connection_string(connection_string) as blob_service_client:
+            async with blob_service_client.get_blob_client(
+                    container=container_name, blob=timeout_blob_path
+            ) as blob_client:
+                await blob_client.upload_blob(b"timeout", overwrite=True)
+    except (ClientRequestError, ResourceNotFoundError) as e:
+        logger.error(f"Failed to upload {timeout_blob_path}: {e}")
+
+async def upload_layer_status_blob(datafile_url: str, layer_name:str = None, connection_string=None, ):
+    """
+
+    @param blob_path:
+    @param container_name:
+    @param connection_string:
+    @return:
+    """
+    datafile_blob_path = chop_blob_url(datafile_url)
+    datasets_blob_path  = get_dst_blob_path(blob_path=datafile_blob_path)
+    container_name, *rest, blob_name = datasets_blob_path.split("/")
+    timeout_blob_path = os.path.join(*rest, f'{blob_name}.timeout')
+
+    try:
+        # create the blob
+        async with ABlobServiceClient.from_connection_string(connection_string) as blob_service_client:
             async with blob_service_client.get_blob_client(
                     container=container_name, blob=timeout_blob_path
             ) as blob_client:
@@ -125,7 +180,7 @@ async def copy_raw2datasets(raw_blob_path: str, connection_string=None):
     container_name, *rest = raw_blob_path.split("/")
     blob_path = "/".join(rest)
     try:
-        blob_service_client = BlobServiceClient.from_connection_string(
+        blob_service_client = ABlobServiceClient.from_connection_string(
             connection_string
         )
 
@@ -135,7 +190,7 @@ async def copy_raw2datasets(raw_blob_path: str, connection_string=None):
             src_blob = container_client.get_blob_client(blob_path)
             src_props = await src_blob.get_blob_properties()
 
-            async with BlobLeaseClient(client=src_blob) as lease:
+            async with ABlobLeaseClient(client=src_blob) as lease:
                 await lease.acquire(30)
 
                 dst_blob_path = get_dst_blob_path(blob_path)
@@ -181,7 +236,7 @@ async def upload_ingesting_blob(blob_path: str, container_name=None, connection_
     ingesting_blob_path = f"{blob_path}.ingesting"
     try:
         # Upload the ingesting file to the blob
-        async with BlobServiceClient.from_connection_string(connection_string) as blob_service_client:
+        async with ABlobServiceClient.from_connection_string(connection_string) as blob_service_client:
             async with blob_service_client.get_blob_client(
                     container=container_name, blob=ingesting_blob_path
             ) as blob_client:
@@ -198,7 +253,7 @@ async def upload_error_blob(blob_path: str = None, error_message: str = None, co
     error_blob_path = f"{blob_path}.error"
     try:
         # Upload the error message as a blob
-        async with BlobServiceClient.from_connection_string(connection_string) as blob_service_client:
+        async with ABlobServiceClient.from_connection_string(connection_string) as blob_service_client:
             async with blob_service_client.get_blob_client(
                     container=container_name, blob=error_blob_path
             ) as blob_client:
@@ -207,7 +262,7 @@ async def upload_error_blob(blob_path: str = None, error_message: str = None, co
         logger.error(f"Failed to upload {error_blob_path}: {e}")
 
 
-async def handle_lock(receiver=None, message=None):
+async def handle_lock(receiver=None, message=None, timeout_event:multiprocessing.Event=None):
     """
     Renew  the AutolockRenewer lock registered on a servicebus message.
     Long running jobs and with unpredictable execution duration  pose few chalenges.
@@ -230,10 +285,16 @@ async def handle_lock(receiver=None, message=None):
         # logger.debug(f'locked until {lu} utc now is {n} lock expired {message._lock_expired} and will expire in  {d}')
         if d < 10:
             logger.debug('renewing lock')
-            await receiver.renew_message_lock(message=message, )
+            try:
+
+                await receiver.renew_message_lock(message=message, )
+            except Exception as e:
+                timeout_event.is_set()
+                # it is questionable whether the exception should be propagated
+                raise
         await asyncio.sleep(1)
 
-async def upload_content_to_blob(content = None, connection_string: str = None, container_name: str = None,
+def upload_content_to_blob(content = None, connection_string: str = None, container_name: str = None,
                 dst_blob_path: str = None, overwrite: bool = True, max_concurrency: int = 8) -> None:
     """
     Uploads the src_path file to Azure dst_blob_path located in container_name
@@ -245,11 +306,19 @@ async def upload_content_to_blob(content = None, connection_string: str = None, 
     @param max_concurrency: 8
     @return:  None
     """
-
-    async  with BlobServiceClient.from_connection_string(connection_string) as blob_service_client:
-        async with blob_service_client.get_blob_client(container=container_name, blob=dst_blob_path) as blob_client:
-           await blob_client.upload_blob(content, overwrite=overwrite, max_concurrency=max_concurrency)
-    logger.info(f"Successfully wrote PMTiles to {dst_blob_path}")
+    for attempt in range(1,4):
+        try:
+            with BlobServiceClient.from_connection_string(connection_string) as blob_service_client:
+                with blob_service_client.get_blob_client(container=container_name, blob=dst_blob_path) as blob_client:
+                   blob_client.upload_blob(content, overwrite=overwrite, max_concurrency=max_concurrency)
+            logger.info(f"Successfully wrote content to {dst_blob_path}")
+            break
+        except Exception as e:
+            if attempt ==  3:
+                logger.info(f'Failed to upload content to {dst_blob_path} in attempt no {attempt}.')
+                raise
+            logger.info(f'Failed to upload content to {dst_blob_path} in attempt no {attempt}. Trying again... ')
+            continue
 
 def upload_blob(src_path: str = None, connection_string: str = None, container_name: str = None,
                 dst_blob_path: str = None, overwrite: bool = True, max_concurrency: int = 8) -> None:
@@ -263,12 +332,26 @@ def upload_blob(src_path: str = None, connection_string: str = None, container_n
     @param max_concurrency: 8
     @return:  None
     """
+    for attempt in range(1,4):
+        try:
+            with BlobServiceClient.from_connection_string(connection_string) as blob_service_client:
+                with blob_service_client.get_blob_client(container=container_name, blob=dst_blob_path) as blob_client:
+                    with open(src_path, "rb") as upload_file:
+                        blob_client.upload_blob(upload_file, overwrite=overwrite, max_concurrency=max_concurrency)
+                    logger.info(f"Successfully wrote {src_path} to {dst_blob_path}")
+                #remove any error
+                error_blob_path = f'{dst_blob_path}.error'
+                with blob_service_client.get_blob_client(container=container_name, blob=error_blob_path) as error_blob_client:
+                    if error_blob_client.exists():
+                        error_blob_client.delete_blob(delete_snapshots=True)
 
-    with BlobServiceClient.from_connection_string(connection_string) as blob_service_client:
-        with blob_service_client.get_blob_client(container=container_name, blob=dst_blob_path) as blob_client:
-            with open(src_path, "rb") as upload_file:
-                blob_client.upload_blob(upload_file, overwrite=overwrite, max_concurrency=max_concurrency)
-    logger.info(f"Successfully wrote PMTiles to {dst_blob_path}")
+            break
+        except Exception as e:
+            if attempt == 3:
+                logger.info(f'Failed to upload {src_path} in attempt no {attempt}.')
+                raise
+            logger.info(f'Failed to upload {src_path} in attempt no {attempt}. Trying again... ')
+            continue
 
 
 async def write(file_handle=None, stream=None, offset=None):

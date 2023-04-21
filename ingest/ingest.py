@@ -34,7 +34,7 @@ sblogger.setLevel(logging.WARNING)
 
 setup_env_vars()
 
-INGEST_TIMEOUT = 11  # 1 hours MAX
+INGEST_TIMEOUT = 3600  # 1 hours MAX
 CONNECTION_STR = os.environ["SERVICE_BUS_CONNECTION_STRING"]
 QUEUE_NAME = os.environ["SERVICE_BUS_QUEUE_NAME"]
 AZ_STORAGE_CONN_STR = os.environ['AZURE_STORAGE_CONNECTION_STRING']
@@ -102,7 +102,7 @@ async def ingest_message():
                                     )
                                     ingest_task.set_name('ingest')
                                     lock_task = asyncio.ensure_future(
-                                        handle_lock(receiver=receiver, message=msg)
+                                        handle_lock(receiver=receiver, message=msg, timeout_event=timeout_event)
                                     )
                                     lock_task.set_name('lock')
 
@@ -210,7 +210,7 @@ def sync_ingest(blob_url: str = None, token: str = None, timeout_event: multipro
                 )
                 if not temp_data_file:
                     raise Exception(f'Undetected exception has occurred while downloading {blob_path}')
-                process_geo_file(src_file_path=temp_data_file, join_vector_tiles=False, timeout_event=timeout_event,
+                process_geo_file(datafile_url=blob_url,src_file_path=temp_data_file, join_vector_tiles=False, timeout_event=timeout_event,
                                  conn_string=conn_string)
                 logger.info(f"Finished ingesting {blob_url}")
         except TimeoutError as te:

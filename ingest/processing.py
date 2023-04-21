@@ -1,4 +1,3 @@
-
 import io
 import multiprocessing
 import os.path
@@ -11,16 +10,17 @@ from ingest.config import gdal_configs
 from rio_cogeo import cog_validate
 
 import logging
-import time
 from ingest.utils import (
     download_blob,
     download_blob_sync,
     upload_blob,
-    prepare_arch_path
+    prepare_arch_path,
+    get_local_cog_path,
+    get_azure_blob_path,
+    upload_content_to_blob
 )
 
 from traceback import print_exc
-
 
 gdal.UseExceptions()
 import subprocess
@@ -28,6 +28,7 @@ import subprocess
 logger = logging.getLogger(__name__)
 
 config, output_profile = gdal_configs()
+
 
 class IngestError(Exception):
     pass
@@ -46,9 +47,10 @@ def should_reproject(src_srs: osr.SpatialReference = None, dst_srs: osr.SpatialR
     @return: bool, True if the source  is different then dst else false
     If the src is ESPG:4326 or EPSG:3857  returns  False
     """
-    auth_code_func_name = ".".join([osr.SpatialReference.GetAuthorityCode.__module__, osr.SpatialReference.GetAuthorityCode.__name__])
+    auth_code_func_name = ".".join(
+        [osr.SpatialReference.GetAuthorityCode.__module__, osr.SpatialReference.GetAuthorityCode.__name__])
     is_same_func_name = ".".join([osr.SpatialReference.IsSame.__module__, osr.SpatialReference.IsSame.__name__])
-    if int(dst_srs.GetAuthorityCode(None)) == 3857 or int(dst_srs.GetAuthorityCode(None)) == 4326:return False
+    if int(dst_srs.GetAuthorityCode(None)) == 3857 or int(dst_srs.GetAuthorityCode(None)) == 4326: return False
     try:
 
         proj_are_equal = int(src_srs.GetAuthorityCode(None)) == int(dst_srs.GetAuthorityCode(None))
@@ -65,8 +67,7 @@ def should_reproject(src_srs: osr.SpatialReference = None, dst_srs: osr.SpatialR
     return not proj_are_equal
 
 
-
-def tippecanoe(tippecanoe_cmd:str =None, timeout_event=None):
+def tippecanoe(tippecanoe_cmd: str = None, timeout_event=None):
     """
     tippecanoe is a bit peculiar. It redirects the status and live logging to stderr
     see https://github.com/mapbox/tippecanoe/issues/874
@@ -87,24 +88,19 @@ def tippecanoe(tippecanoe_cmd:str =None, timeout_event=None):
         # the error is going to show up on stdout as it is redirected in the Popen
         err = None
         with proc.stdout:
-            stream = io.open(proc.stdout.fileno()) # this will really make it streamabale
+            stream = io.open(proc.stdout.fileno())  # this will really make it streamabale
             while proc.poll() is None:
                 output = stream.readline().strip('\r').strip('\n')
                 if output:
                     logger.debug(output)
-                    if err != output:err = output
+                    if err != output: err = output
                 if timeout_event and timeout_event.is_set():
                     logger.error(f'tippecanoe process has been signalled to stop ')
                     proc.terminate()
-                    raise subprocess.TimeoutExpired(cmd=tippecanoe_cmd,timeout=None)
-
+                    raise subprocess.TimeoutExpired(cmd=tippecanoe_cmd, timeout=None)
 
         if proc.returncode and proc.returncode != 0:
             raise Exception(err)
-
-
-
-
 
 
 def dataset2fgb(fgb_dir: str = None,
@@ -129,7 +125,7 @@ def dataset2fgb(fgb_dir: str = None,
     converted_layers = dict()
     for lname in layers:
         try:
-            #if '_' in lname:raise Exception(f'Simulated exception on {lname}')
+            # if '_' in lname:raise Exception(f'Simulated exception on {lname}')
             dst_path = os.path.join(fgb_dir, f'{lname}.fgb')
             layer = src_ds.GetLayerByName(lname)
             layer_srs = layer.GetSpatialRef()
@@ -172,15 +168,17 @@ def dataset2fgb(fgb_dir: str = None,
                     error_message = m.getvalue()
                     msg = f'Failed to convert {lname} from {src_path} to FlatGeobuf. \n {error_message}'
                     logger.error(msg)
-                    #TODO upload error blob
+                    # TODO upload error blob
 
     return converted_layers
 
-def fgb2pmtiles(fgb_layers:typing.Dict[str,str]=None, pmtiles_file_name:str=None, timeout_event=multiprocessing.Event, conn_string:str=None):
+
+def fgb2pmtiles(datafile_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles_file_name: str = None,
+                timeout_event=multiprocessing.Event, conn_string: str = None):
     """
     Converts all FlatGeobuf files from fgb_layers dict into PMtile format and uploads the result to Azure
-    blob. Supports cancelation through event arg
-    @param fgb_layers: a dict where the key is tyhe layer name and the value is the abs path to the FlatGeobuf file
+    blob. Supports cancellation through event arg
+    @param fgb_layers: a dict where the key is the layer name and the value is the abs path to the FlatGeobuf file
     @param pmtiles_file_name: the name of the output PMTiles file. If supplied all layers will be added to this file
     @param timeout_event: arg to signalize to Tippecanoe a timeout/interrupt
     @param conn_string: the connection string used t connect to the Azure storage account
@@ -192,14 +190,13 @@ def fgb2pmtiles(fgb_layers:typing.Dict[str,str]=None, pmtiles_file_name:str=None
             try:
                 layer_pmtiles_path = fgb_layer_path.replace('.fgb', '.pmtiles')
 
-
                 tippecanoe_cmd = [
                     "tippecanoe",
                     "-o",
                     layer_pmtiles_path,
-                    f'-l{layer_name}', # no space is allowed here between -l and layer name
+                    f'-l{layer_name}',  # no space is allowed here between -l and layer name
                     "--no-feature-limit",
-                    #"-zg" if '_' not in layer_name else '-zt',
+                    # "-zg" if '_' not in layer_name else '-zt',
                     "-zg",
                     "--simplify-only-low-zooms",
                     "--detect-shared-borders",
@@ -209,13 +206,21 @@ def fgb2pmtiles(fgb_layers:typing.Dict[str,str]=None, pmtiles_file_name:str=None
                     "--force",
                     fgb_layer_path,
                 ]
-                tippecanoe(tippecanoe_cmd=tippecanoe_cmd,timeout_event=timeout_event)
+                tippecanoe(tippecanoe_cmd=tippecanoe_cmd, timeout_event=timeout_event)
                 with open(layer_pmtiles_path, 'r+b') as f:
                     reader = Reader(MmapSource(f))
                     mdict = reader.metadata()
-                    assert layer_name in  [vl["id"] for vl in mdict["vector_layers"]], f'{layer_name} is not present in {layer_pmtiles_path} PMTiles file.'
+                    assert layer_name in [vl["id"] for vl in mdict[
+                        "vector_layers"]], f'{layer_name} is not present in {layer_pmtiles_path} PMTiles file.'
                 logger.info(f'Created single layer PMtiles file {layer_pmtiles_path}')
-                #upload layer_pmtiles_path to azure
+                # upload layer_pmtiles_path to azure
+                container_name, pmtiles_blob_path = get_azure_blob_path(datafile_url=datafile_url,
+                                                                        local_path=layer_pmtiles_path)
+                logger.info(f'Uploading {layer_pmtiles_path} to {pmtiles_blob_path}')
+                upload_blob(src_path=layer_pmtiles_path, connection_string=conn_string, container_name=container_name,
+                            dst_blob_path=pmtiles_blob_path, )
+
+
 
 
             except subprocess.TimeoutExpired as te:
@@ -228,8 +233,13 @@ def fgb2pmtiles(fgb_layers:typing.Dict[str,str]=None, pmtiles_file_name:str=None
                     )  # exc is extracted using system.exc_info
                     error_message = m.getvalue()
                     logger.error(f'Failed to convert FlatGeobuf {fgb_layer_path} to PMtiles. {error_message}')
-                #TODO upload error file
-
+                    # upload error file
+                    container_name, pmtiles_blob_path = get_azure_blob_path(datafile_url=datafile_url,
+                                                                            local_path=layer_pmtiles_path)
+                    error_pmtiles_blob_path = f'{pmtiles_blob_path}.error'
+                    upload_content_to_blob(content=error_message, connection_string=conn_string,
+                                           container_name=container_name,
+                                           dst_blob_path=error_pmtiles_blob_path)
                 if len(fgb_layers) > 1: logger.error(f'Moving to next layer')
 
 
@@ -263,8 +273,16 @@ def fgb2pmtiles(fgb_layers:typing.Dict[str,str]=None, pmtiles_file_name:str=None
             with open(pmtiles_path, 'r+b') as f:
                 reader = Reader(MmapSource(f))
                 mdict = reader.metadata()
-                assert len(fgb_layers) ==  len([vl["id"] for vl in mdict["vector_layers"]]), f'{layer_name} is not present in {pmtiles_path} PMTiles file.'
+                assert len(fgb_layers) == len([vl["id"] for vl in mdict[
+                    "vector_layers"]]), f'{layer_name} is not present in {pmtiles_path} PMTiles file.'
             logger.info(f'Created multilayer PMtiles file {pmtiles_path}')
+            # upload layer_pmtiles_path to azure
+            container_name, pmtiles_blob_path = get_azure_blob_path(datafile_url=datafile_url,
+                                                                    local_path=pmtiles_path)
+            logger.info(f'Uploading {pmtiles_path} to {pmtiles_blob_path}')
+            upload_blob(src_path=pmtiles_path, connection_string=conn_string, container_name=container_name,
+                        dst_blob_path=pmtiles_blob_path)
+
         except subprocess.TimeoutExpired as te:
             logger.error(f'Conversion of layers {",".join(fgb_layers)} from {fgb_dir} has timed out.')
 
@@ -276,21 +294,25 @@ def fgb2pmtiles(fgb_layers:typing.Dict[str,str]=None, pmtiles_file_name:str=None
                 error_message = m.getvalue()
                 logger.error(f'Failed to convert {",".join(fgb_layers)} from {fgb_dir} to PMtiles. {error_message}')
 
-            #upload error file
+                # upload error file
+                container_name, pmtiles_blob_path = get_azure_blob_path(datafile_url=datafile_url,
+                                                                        local_path=pmtiles_path)
+                error_pmtiles_blob_path = f'{pmtiles_blob_path}.error'
+                upload_content_to_blob(content=error_message, connection_string=conn_string,
+                                       container_name=container_name,
+                                       dst_blob_path=error_pmtiles_blob_path)
 
 
-
-
-
-
-def dataset2pmtiles(src_ds:gdal.Dataset=None,
-                    layers:typing.List[str] = None,
-                    conn_string:str=None,
-                    pmtiles_file_name:typing.Optional[str]=None,
-                    timeout_event:multiprocessing.Event=None):
+def dataset2pmtiles(datafile_url: str = None,
+                    src_ds: gdal.Dataset = None,
+                    layers: typing.List[str] = None,
+                    conn_string: str = None,
+                    pmtiles_file_name: typing.Optional[str] = None,
+                    timeout_event: multiprocessing.Event = None):
     """
     Converts the layer/s contained in src_ds GDAL dataset  to PMTiles and uploads them to Azure
 
+    @param datafile_url:
     @param src_ds: instance of GDAL Dataset
     @param layers: iter or layer/s name/s
     @param conn_string: Azure storage account connection string
@@ -313,20 +335,23 @@ def dataset2pmtiles(src_ds:gdal.Dataset=None,
     with tempfile.TemporaryDirectory() as temp_dir:
         fgb_layers = dataset2fgb(fgb_dir=temp_dir, src_ds=src_ds, layers=layers, timeout_event=timeout_event)
         if fgb_layers:
-            fgb2pmtiles(fgb_layers=fgb_layers, pmtiles_file_name=pmtiles_file_name, timeout_event=timeout_event, conn_string=conn_string)
-
+            fgb2pmtiles(datafile_url=datafile_url, fgb_layers=fgb_layers, pmtiles_file_name=pmtiles_file_name,
+                        timeout_event=timeout_event, conn_string=conn_string)
 
 
 def gdal_callback(complete, message, timeout_event):
-    logger.debug(f'{complete*100:.2f}')
+    logger.debug(f'{complete * 100:.2f}')
     if timeout_event and timeout_event.is_set():
         logger.info(f'GDAL received timeout signal')
         return 0
 
 
-def dataset2cog(src_ds:gdal.Dataset=None, bands:typing.List[int]=None, timeout_event=None):
+def dataset2cog(datafile_url=None, src_ds: gdal.Dataset = None, bands: typing.List[int] = None, timeout_event=None,
+                conn_string=None):
     """
     Convert a GDAL dataset or a subdataset to a COG
+    @param conn_string:
+    @param datafile_url:
     @param src_ds: an instance of gdal.Dataset
     @param bands: list of band numbers
     @param timeout_event: object used to signal a timeout
@@ -338,7 +363,7 @@ def dataset2cog(src_ds:gdal.Dataset=None, bands:typing.List[int]=None, timeout_e
         with tempfile.TemporaryDirectory() as temp_dir:
 
             band = bands[0] if bands and len(bands) == 1 else None
-            cog_path = prepare_cog_path1(src_path=src_path, dst_folder=temp_dir, band=band)
+            cog_path = get_local_cog_path(src_path=src_path, dst_folder=temp_dir, band=band)
             band_word = f'band {band}' if band else 'bands'
             cog_ds = gdal.Translate(
                 destName=cog_path,
@@ -365,7 +390,11 @@ def dataset2cog(src_ds:gdal.Dataset=None, bands:typing.List[int]=None, timeout_e
                 sep = '\n'
                 raise Exception(f'Invalid COG {cog_path}. Errors are {f"{sep}".join(errors)}')
             logger.info(f'Created COG {cog_path} from {src_path}')
-            #TODO upload COG
+            container_name, cog_blob_path = get_azure_blob_path(datafile_url=datafile_url, local_path=cog_path)
+            # TODO upload COG
+            logger.info(f'Uploading {cog_path} to {cog_blob_path}')
+            upload_blob(src_path=cog_path, connection_string=conn_string, container_name=container_name,
+                        dst_blob_path=cog_blob_path, )
     except (RuntimeError, Exception) as re:
         if 'user terminated' in str(re).lower():
             logger.info(f'Conversion of {src_path} to COG has timed out')
@@ -377,40 +406,22 @@ def dataset2cog(src_ds:gdal.Dataset=None, bands:typing.List[int]=None, timeout_e
                 error_message = m.getvalue()
                 msg = f'Failed to convert {band_word} from {src_path} to COG. \n {error_message}'
                 logger.error(msg)
-                #uploa error blob
+                # upload error blob
+                container_name, cog_blob_path = get_azure_blob_path(datafile_url=datafile_url, local_path=cog_path)
+                error_cog_blob_path = f'{cog_blob_path}.error'
+                upload_content_to_blob(content=msg, connection_string=conn_string, container_name=container_name,
+                                       dst_blob_path=error_cog_blob_path)
 
 
-
-
-def prepare_cog_path1(src_path: str = None, dst_folder:str=None, band=None):
-
-    folders, fname = os.path.split(src_path)
-    fname_without_ext, ext = os.path.splitext(fname)
-    if src_path.count(':') == 2:
-        _, rpath, fname_without_ext = src_path.split(':')
-        folders, _ = os.path.split(rpath)
-        if '"' in fname_without_ext: fname_without_ext = fname_without_ext.replace('"', '')
-        if "'" in fname_without_ext: fname_without_ext = fname_without_ext.replace("'", '')
-
-    if not band:
-        return f'{os.path.join(dst_folder, f"{fname_without_ext}.tif")}'
-    else:
-        return f'{os.path.join(dst_folder, f"{fname_without_ext}_band{band}.tif")}'
-
-
-
-def gdal_open_safe(path:str=None, data_type=None)-> gdal.Dataset:
-    return  gdal.OpenEx(path, data_type )
-
-
-def process_geo_file(   src_file_path: str = None, join_vector_tiles:bool=False,
-                        conn_string:str=None, timeout_event:multiprocessing.Event=None
-                    ):
+def process_geo_file(datafile_url=None, src_file_path: str = None, join_vector_tiles: bool = False,
+                     conn_string: str = None, timeout_event: multiprocessing.Event = None
+                     ):
     """
     Converts the vector layers from the input src_file_path to PMtiles and the raster bands to
     COGs.  In case errors are encountered an error blob containing the error message is uploaded.
     If the conversion is successful the output files are uploaded to Azure.
 
+    @param datafile_url:
     @param src_file_path:
     @param join_vector_tiles:
     @param conn_string:
@@ -442,18 +453,19 @@ def process_geo_file(   src_file_path: str = None, join_vector_tiles:bool=False,
                 if not join_vector_tiles:
                     for layer_name in layer_names:
                         logger.info(f'Ingesting vector layer "{layer_name}"')
-                        dataset2pmtiles(src_ds=vdataset, layers=[layer_name],timeout_event=timeout_event, conn_string=conn_string)
+                        dataset2pmtiles(datafile_url=datafile_url, src_ds=vdataset, layers=[layer_name],
+                                        timeout_event=timeout_event, conn_string=conn_string)
                 else:
 
                     logger.info(f'Ingesting all vector layers into one multilayer PMtiles file')
                     fname, ext = os.path.splitext(file_name)
-                    dataset2pmtiles(src_ds=vdataset, layers=layer_names, pmtiles_file_name=fname, timeout_event=timeout_event, conn_string=conn_string)
+                    dataset2pmtiles(datafile_url=datafile_url, src_ds=vdataset, layers=layer_names,
+                                    pmtiles_file_name=fname, timeout_event=timeout_event, conn_string=conn_string)
             else:
                 logger.info(f'{src_file_path} contains {nvector_layers} vector layers')
             del vdataset
         else:
             logger.info(f"{src_file_path} does not contain vector GIS data")
-
 
         try:
             rdataset = gdal.OpenEx(src_file_path, gdal.OF_RASTER)
@@ -470,13 +482,12 @@ def process_geo_file(   src_file_path: str = None, join_vector_tiles:bool=False,
         # some formats will have subdatasets like ESRI geodatabase (according to docs) or NetCDF
         nraster_bands = rdataset.RasterCount
 
-
         # Driver.getMetadataItem(gdal.DCAP_SUBTADASETS) is not reliable so it is better to try
 
         for sdb in rdataset.GetSubDatasets():
             subdataset_path, subdataset_descr = sdb
             subds = gdal.Open(subdataset_path.replace('\"', ''))
-            #logger.info(f'Opening raster subdataset {subdataset_descr} featuring {subds.RasterCount} bands')
+            # logger.info(f'Opening raster subdataset {subdataset_descr} featuring {subds.RasterCount} bands')
             subds_bands = [b + 1 for b in range(subds.RasterCount)]
             subds_colorinterp = []
             if subds_bands:
@@ -487,12 +498,13 @@ def process_geo_file(   src_file_path: str = None, join_vector_tiles:bool=False,
             # create cog_path, usually  it is a temp
             if subds_no_colorinterp_bands >= 3 or subds_photometric is not None:
                 logger.info(f'Ingesting multiband subdataset {subdataset_path}')
-                dataset2cog(src_ds=subds,timeout_event=timeout_event)
+                dataset2cog(datafile_url=datafile_url, src_ds=subds, timeout_event=timeout_event,
+                            conn_string=conn_string)
             else:
                 for band_no in subds_bands:
                     logger.info(f'Ingesting band {band_no} from {subdataset_path}')
-                    dataset2cog(src_ds=subds, bands=[band_no], timeout_event=timeout_event)
-
+                    dataset2cog(datafile_url=datafile_url, src_ds=subds, bands=[band_no], timeout_event=timeout_event,
+                                conn_string=conn_string)
 
             del subds
 
@@ -505,12 +517,14 @@ def process_geo_file(   src_file_path: str = None, join_vector_tiles:bool=False,
             photometric = rdataset.GetMetadataItem('PHOTOMETRIC')
             if max(colorinterp) >= 3 or photometric is not None:
                 logger.info(f'Ingesting multiband dataset {src_file_path}')
-                dataset2cog(src_ds=rdataset, timeout_event=timeout_event)
+                dataset2cog(datafile_url=datafile_url, src_ds=rdataset, timeout_event=timeout_event,
+                            conn_string=conn_string)
             else:
                 logger.info(f'Found {nraster_bands} rasters')
                 for band_no in bands:
                     logger.info(f'Ingesting band {band_no} from {src_file_path}')
-                    dataset2cog(src_ds=rdataset, bands=[band_no], timeout_event=timeout_event)
+                    dataset2cog(datafile_url=datafile_url, src_ds=rdataset, bands=[band_no],
+                                timeout_event=timeout_event, conn_string=conn_string)
 
         del rdataset
 
@@ -518,5 +532,3 @@ def process_geo_file(   src_file_path: str = None, join_vector_tiles:bool=False,
         if 'vdataset' in locals(): del vdataset
         if 'rdataset' in locals(): del rdataset
         raise
-
-
