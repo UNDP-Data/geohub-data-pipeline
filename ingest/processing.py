@@ -15,7 +15,8 @@ import time
 from ingest.utils import (
     download_blob,
     download_blob_sync,
-    upload_blob
+    upload_blob,
+    prepare_arch_path
 )
 
 from traceback import print_exc
@@ -417,7 +418,7 @@ def process_geo_file(   src_file_path: str = None, join_vector_tiles:bool=False,
     @return:
     """
     assert src_file_path not in ['', None], f'Invalid geospatial data file path: {src_file_path}'
-
+    src_file_path = prepare_arch_path(src_path=src_file_path)
 
     try:
 

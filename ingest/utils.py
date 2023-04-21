@@ -4,6 +4,7 @@ import math
 import os.path
 import threading
 import time
+import typing
 from urllib.parse import urlparse
 from azure.storage.blob.aio import BlobLeaseClient, BlobServiceClient, ContainerClient as AContainerClient
 from azure.storage.blob import ContainerClient
@@ -25,13 +26,24 @@ from ingest.ingest_exceptions import ClientRequestError, ResourceNotFoundError
 logger = logging.getLogger(__name__)
 
 
-def prepare_blob_path(blob_path: str) -> str:
+def chop_blob_url(blob_url: str) -> str:
     """
     Safely extract relative path of the blob from its url using urllib
     """
-    return urlparse(blob_path).path[1:]  # 1 is to exclude the start slash/path separator
+    return urlparse(blob_url).path[1:]  # 1 is to exclude the start slash/path separator
     # because the os.path.join disregards any args that start with path sep
 
+def prepare_arch_path(src_path:str=None) -> str:
+
+    assert os.path.isabs(src_path), f'{src_path} has tot be an absolute path'
+
+    _, ext = os.path.splitext(src_path)
+
+    if ext in GDAL_ARCHIVE_FORMATS:
+        arch_driver = GDAL_ARCHIVE_FORMATS[ext]
+        return os.path.join(os.path.sep, arch_driver, src_path[1:] )
+    else:
+        return src_path
 
 def prepare_vsiaz_path(blob_path: str) -> str:
     """
@@ -50,9 +62,31 @@ def prepare_vsiaz_path(blob_path: str) -> str:
 
 def get_dst_blob_path(blob_path: str) -> str:
     dst_blob = blob_path.replace(f"/{raw_folder}/", f"/{datasets_folder}/")
-    pmtile_name = blob_path.split("/")[-1]
-    return f"{dst_blob}/{pmtile_name}"
+    file_name = blob_path.split("/")[-1]
+    return f"{dst_blob}/{file_name}"
 
+async def upload_timeout_blob(blob_url: str, connection_string=None):
+    """
+
+    @param blob_path:
+    @param container_name:
+    @param connection_string:
+    @return:
+    """
+    raw_blob_path = chop_blob_url(blob_url)
+    datasets_blob_path  = get_dst_blob_path(blob_path=raw_blob_path)
+    container_name, *rest, blob_name = datasets_blob_path.split("/")
+    timeout_blob_path = os.path.join(*rest, f'{blob_name}.timeout')
+
+    try:
+        # create the blob
+        async with BlobServiceClient.from_connection_string(connection_string) as blob_service_client:
+            async with blob_service_client.get_blob_client(
+                    container=container_name, blob=timeout_blob_path
+            ) as blob_client:
+                await blob_client.upload_blob(b"timeout", overwrite=True)
+    except (ClientRequestError, ResourceNotFoundError) as e:
+        logger.error(f"Failed to upload {timeout_blob_path}: {e}")
 
 #
 # async def gdal_open_async(filename):
@@ -199,7 +233,23 @@ async def handle_lock(receiver=None, message=None):
             await receiver.renew_message_lock(message=message, )
         await asyncio.sleep(1)
 
+async def upload_content_to_blob(content = None, connection_string: str = None, container_name: str = None,
+                dst_blob_path: str = None, overwrite: bool = True, max_concurrency: int = 8) -> None:
+    """
+    Uploads the src_path file to Azure dst_blob_path located in container_name
+    @param content: str, source file
+    @param connection_string: strm the Azure storage account  connection string
+    @param container_name: str, container name
+    @param dst_blob_path: relative path to the container  where the src_path will be uploaded
+    @param overwrite: bool
+    @param max_concurrency: 8
+    @return:  None
+    """
 
+    async  with BlobServiceClient.from_connection_string(connection_string) as blob_service_client:
+        async with blob_service_client.get_blob_client(container=container_name, blob=dst_blob_path) as blob_client:
+           await blob_client.upload_blob(content, overwrite=overwrite, max_concurrency=max_concurrency)
+    logger.info(f"Successfully wrote PMTiles to {dst_blob_path}")
 
 def upload_blob(src_path: str = None, connection_string: str = None, container_name: str = None,
                 dst_blob_path: str = None, overwrite: bool = True, max_concurrency: int = 8) -> None:

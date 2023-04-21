@@ -13,14 +13,15 @@ import tempfile
 # from ingest.raster_to_cog import ingest_raster, ingest_raster_sync
 from ingest.utils import (
     copy_raw2datasets,
-    # gdal_open_async,
     handle_lock,
-    prepare_blob_path,
-    prepare_vsiaz_path,
-    download_blob,
-    download_blob_sync
+
+    upload_content_to_blob,
+    chop_blob_url,
+    download_blob_sync,
+    upload_timeout_blob
 
 )
+
 # from ingest.vector_to_tiles import ingest_vector, ingest_vector_sync
 
 logger = logging.getLogger(__name__)
@@ -37,16 +38,15 @@ INGEST_TIMEOUT = 11  # 1 hours MAX
 CONNECTION_STR = os.environ["SERVICE_BUS_CONNECTION_STRING"]
 QUEUE_NAME = os.environ["SERVICE_BUS_QUEUE_NAME"]
 AZ_STORAGE_CONN_STR = os.environ['AZURE_STORAGE_CONNECTION_STRING']
+
+
 async def ingest_message():
-
-
-
     async with ServiceBusClient.from_connection_string(
-        conn_str=CONNECTION_STR, logging_enable=True
+            conn_str=CONNECTION_STR, logging_enable=True
     ) as servicebus_client:
         async with servicebus_client.get_queue_receiver(
-            queue_name=QUEUE_NAME,
-            prefetch_count=0,
+                queue_name=QUEUE_NAME,
+                prefetch_count=0,
         ) as receiver:  # get one message without caching
             async with receiver:
                 while True:
@@ -62,7 +62,7 @@ async def ingest_message():
                         try:
                             msg_str = json.loads(str(msg))
                             blob_url, token = msg_str.split(";")
-                            if not 'Sample' in blob_url:continue
+                            if not 'Sample' in blob_url: continue
                             logger.info(
                                 f"Received blob: {blob_url} from queue"
                             )
@@ -97,7 +97,8 @@ async def ingest_message():
 
                                     timeout_event = multiprocessing.Event()
                                     ingest_task = asyncio.ensure_future(
-                                        asyncio.to_thread(sync_ingest, blob_url=blob_url, timeout_event=timeout_event, conn_string=AZ_STORAGE_CONN_STR )
+                                        asyncio.to_thread(sync_ingest, blob_url=blob_url, timeout_event=timeout_event,
+                                                          conn_string=AZ_STORAGE_CONN_STR)
                                     )
                                     ingest_task.set_name('ingest')
                                     lock_task = asyncio.ensure_future(
@@ -111,23 +112,23 @@ async def ingest_message():
                                         timeout=INGEST_TIMEOUT,
                                     )
                                     if len(done) == 0:
-                                        logger.info(f'Ingesting {blob_url} has timed out after {INGEST_TIMEOUT} seconds.')
+                                        logger.info(
+                                            f'Ingesting {blob_url} has timed out after {INGEST_TIMEOUT} seconds.')
                                         timeout_event.set()
-                                        #upload an blob to the /dataset/{datasetname} folder.
-
+                                        # upload an blob to the /dataset/{datasetname} folder.
+                                        await upload_timeout_blob(blob_url=blob_url, connection_string=AZ_STORAGE_CONN_STR)
 
                                     logger.debug(f'Handling done tasks')
 
                                     for done_future in done:
                                         try:
                                             await done_future
-                                            #await receiver.complete_message(msg)
+                                            # await receiver.complete_message(msg)
                                         except Exception as e:
                                             with StringIO() as m:
                                                 print_exc(file=m)
                                                 em = m.getvalue()
                                                 logger.error(f'done future error {em}')
-
 
                                     logger.debug(f'Cancelling pending tasks')
 
@@ -136,7 +137,8 @@ async def ingest_message():
                                             pending_future.cancel()
                                             await pending_future
                                         except asyncio.CancelledError:
-                                            logger.debug(f'Pending future {pending_future.get_name()} has been cancelled')
+                                            logger.debug(
+                                                f'Pending future {pending_future.get_name()} has been cancelled')
                                         except Exception as e:
                                             raise
 
@@ -147,7 +149,7 @@ async def ingest_message():
                                     await receiver.complete_message(msg)
                                     logger.info(f"Completed message for: {blob_url}")
 
-                        except Exception as pe: # this  first level might be redundant
+                        except Exception as pe:  # this  first level might be redundant
                             with StringIO() as m:
                                 print_exc(file=m)
                                 em = m.getvalue()
@@ -159,8 +161,8 @@ async def ingest_message():
                             continue
 
 
-def sync_ingest(blob_url: str = None, token:str=None, timeout_event:multiprocessing.Event=None, conn_string:str=None):
-
+def sync_ingest(blob_url: str = None, token: str = None, timeout_event: multiprocessing.Event = None,
+                conn_string: str = None):
     """
     Ingest a geospatial data file potentially containing multiple raster/vector layers
     into geohub
@@ -192,12 +194,12 @@ def sync_ingest(blob_url: str = None, token:str=None, timeout_event:multiprocess
     """
     logger.info(f"Starting to ingest {blob_url}")
     # if the file is a pmtiles file, return without ingesting, copy to datasets
-    blob_path = prepare_blob_path(blob_url)
+    blob_path = chop_blob_url(blob_url)
 
     if blob_url.endswith(".pmtiles"):
         asyncio.run(copy_raw2datasets(raw_blob_path=blob_path))
     else:
-        #vsiaz_path = prepare_vsiaz_path(container_blob_path)
+        # vsiaz_path = prepare_vsiaz_path(container_blob_path)
         try:
             with tempfile.TemporaryDirectory() as temp_dir:
                 temp_data_file = download_blob_sync(
@@ -208,7 +210,8 @@ def sync_ingest(blob_url: str = None, token:str=None, timeout_event:multiprocess
                 )
                 if not temp_data_file:
                     raise Exception(f'Undetected exception has occurred while downloading {blob_path}')
-                process_geo_file(src_file_path=temp_data_file, join_vector_tiles=False, timeout_event=timeout_event, conn_string=conn_string)
+                process_geo_file(src_file_path=temp_data_file, join_vector_tiles=False, timeout_event=timeout_event,
+                                 conn_string=conn_string)
                 logger.info(f"Finished ingesting {blob_url}")
         except TimeoutError as te:
             logger.debug(te)
@@ -217,8 +220,3 @@ def sync_ingest(blob_url: str = None, token:str=None, timeout_event:multiprocess
                 print_exc(file=m)
                 em = m.getvalue()
                 logger.error(f'{em}')
-
-
-
-
-
