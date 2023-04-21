@@ -33,7 +33,7 @@ sblogger.setLevel(logging.WARNING)
 
 setup_env_vars()
 
-INGEST_TIMEOUT = 200  # 1 hours MAX
+INGEST_TIMEOUT = 11  # 1 hours MAX
 CONNECTION_STR = os.environ["SERVICE_BUS_CONNECTION_STRING"]
 QUEUE_NAME = os.environ["SERVICE_BUS_QUEUE_NAME"]
 AZ_STORAGE_CONN_STR = os.environ['AZURE_STORAGE_CONNECTION_STRING']
@@ -62,7 +62,7 @@ async def ingest_message():
                         try:
                             msg_str = json.loads(str(msg))
                             blob_url, token = msg_str.split(";")
-                            if not 'District' in blob_url:continue
+                            if not 'Sample' in blob_url:continue
                             logger.info(
                                 f"Received blob: {blob_url} from queue"
                             )
@@ -111,54 +111,40 @@ async def ingest_message():
                                         timeout=INGEST_TIMEOUT,
                                     )
                                     if len(done) == 0:
-                                        logger.info(f'Ingest has timed out after {INGEST_TIMEOUT} seconds.')
+                                        logger.info(f'Ingesting {blob_url} has timed out after {INGEST_TIMEOUT} seconds.')
                                         timeout_event.set()
-                                    logger.info(f'Handling done tasks')
+                                        #upload an blob to the /dataset/{datasetname} folder.
+
+
+                                    logger.debug(f'Handling done tasks')
+
                                     for done_future in done:
                                         try:
-                                            res = await done_future
-                                            logger.info(f'{done_future.get_name()} completed with result {res}')
-
+                                            await done_future
+                                            #await receiver.complete_message(msg)
                                         except Exception as e:
                                             with StringIO() as m:
                                                 print_exc(file=m)
                                                 em = m.getvalue()
-
                                                 logger.error(f'done future error {em}')
 
 
-                                    logger.info(f'Cancelling pending tasks')
+                                    logger.debug(f'Cancelling pending tasks')
 
                                     for pending_future in pending:
-                                        logger.info(f'Cancelling {pending_future.get_name()}')
                                         try:
                                             pending_future.cancel()
                                             await pending_future
                                         except asyncio.CancelledError:
-                                            logger.error(f'prending future {pending_future.get_name()} has been cancelled')
+                                            logger.debug(f'Pending future {pending_future.get_name()} has been cancelled')
                                         except Exception as e:
-                                            logger.error(f'encountered error {e}')
-
-                                    # for done_future in done:
-                                    #     await done_future
-                                    #     #await receiver.complete_message(msg)
-                                    #     # logger.debug(f'{str(msg)} completed with result {res}')
-                                    # for pending_future in pending:
-                                    #     logger.debug(f'Cancelling {pending_future.get_name()}')
-                                    #     try:
-                                    #         pending_future.cancel()
-                                    #         await pending_future
-                                    #     except asyncio.CancelledError:
-                                    #         logger.debug(f'pending future {pending_future.get_name()} has been cancelled')
-                                    #     except Exception as e:
-                                    #         raise
-
+                                            raise
 
                                 else:
                                     logger.info(
                                         f"Skipping {blob_url} because it is not in the {raw_folder} folder"
                                     )
-                                    #await receiver.complete_message(msg)
+                                    await receiver.complete_message(msg)
                                     logger.info(f"Completed message for: {blob_url}")
 
                         except Exception as pe: # this  first level might be redundant
@@ -170,15 +156,39 @@ async def ingest_message():
                             # await receiver.dead_letter_message(
                             #     msg, reason="message parse error", error_description=em
                             # )
-                            #continue
+                            continue
 
 
-def sync_ingest(blob_url: str = None, token=None, timeout_event=None, conn_string=None):
+def sync_ingest(blob_url: str = None, token:str=None, timeout_event:multiprocessing.Event=None, conn_string:str=None):
+
     """
-    Ingest a geospatial data file potentially containing multiple layers
+    Ingest a geospatial data file potentially containing multiple raster/vector layers
     into geohub
-    Follows exactly https://github.com/UNDP-Data/geohub/discussions/545
+    Follows  https://github.com/UNDP-Data/geohub/discussions/545
 
+    There are some peculiarities about this function:
+        1) downlod_blob_sync  returns errors on timeout(signalled using timeout_event argument
+        2. process geo file uses the timeout_event to cancel GDAL functions as well as the tippecanoe process
+        3. thi function is executed in a separate Thread. By the time the error is received the parent async machinery
+            will have finished running. This is why it silences the errors as there is no parent receiver.
+            This is by design, because in python is is NOT possible to cleansly STOP a thread except by
+            interrupting the functions that run inside the thread which is EXACTLY what is happening
+
+    The reason behind running this function in a separate thread are simple. GDAL/geo API's are not async.
+    The reason why the parent machinery is async is simple. Managing concurrent functions in async is much easier then
+    using threads. Async funcs can be easily cancelled and they time out in a reasonable way. Also, contrary to intuition,
+    the fastest way to download  A SINGLE  data file from azure is not async but  sync using max_concurrency.
+
+    It is by design that the ingest is sync managed by an async machinery. The risk of running truly async ingest is running
+    out of memory because multiple data files would have been opened at the same time in RAM.
+    This is why in essence the ingest is sequential, run by an async machinery and sync at its core. By combining these
+    features and approached a resilient and solid pipeline was produced.
+
+    @param blob_url: the input file stored in Azure (blob)
+    @param token:
+    @param timeout_event: object used to signal a timeout has occurred
+    @param conn_string: info to connect to Azure (download/upload)
+    @return: None
     """
     logger.info(f"Starting to ingest {blob_url}")
     # if the file is a pmtiles file, return without ingesting, copy to datasets
@@ -188,15 +198,25 @@ def sync_ingest(blob_url: str = None, token=None, timeout_event=None, conn_strin
         asyncio.run(copy_raw2datasets(raw_blob_path=blob_path))
     else:
         #vsiaz_path = prepare_vsiaz_path(container_blob_path)
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_data_file = download_blob_sync(
-                local_folder=temp_dir,
-                conn_string=conn_string,
-                src_blob_path=blob_path,
-                timeout_event=timeout_event
-            )
-            process_geo_file(src_file_path=temp_data_file, join_vector_tiles=False, timeout_event=timeout_event, conn_string=conn_string)
-            logger.info(f"Finished ingesting {blob_url}")
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_data_file = download_blob_sync(
+                    local_folder=temp_dir,
+                    conn_string=conn_string,
+                    src_blob_path=blob_path,
+                    timeout_event=timeout_event
+                )
+                if not temp_data_file:
+                    raise Exception(f'Undetected exception has occurred while downloading {blob_path}')
+                process_geo_file(src_file_path=temp_data_file, join_vector_tiles=False, timeout_event=timeout_event, conn_string=conn_string)
+                logger.info(f"Finished ingesting {blob_url}")
+        except TimeoutError as te:
+            logger.debug(te)
+        except Exception as ee:
+            with StringIO() as m:
+                print_exc(file=m)
+                em = m.getvalue()
+                logger.error(f'{em}')
 
 
 

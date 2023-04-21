@@ -1,7 +1,7 @@
 import asyncio
 import logging
+import math
 import os.path
-import tempfile
 import threading
 import time
 from urllib.parse import urlparse
@@ -18,7 +18,7 @@ from ingest.config import (
     raw_folder,
 )
 
-from aiofile import  AIOFile
+from aiofile import AIOFile
 from ingest.config import GDAL_ARCHIVE_FORMATS
 from ingest.ingest_exceptions import ClientRequestError, ResourceNotFoundError
 
@@ -29,7 +29,7 @@ def prepare_blob_path(blob_path: str) -> str:
     """
     Safely extract relative path of the blob from its url using urllib
     """
-    return urlparse(blob_path).path[1:] # 1 is to exclude the start slash/path separator
+    return urlparse(blob_path).path[1:]  # 1 is to exclude the start slash/path separator
     # because the os.path.join disregards any args that start with path sep
 
 
@@ -52,6 +52,7 @@ def get_dst_blob_path(blob_path: str) -> str:
     dst_blob = blob_path.replace(f"/{raw_folder}/", f"/{datasets_folder}/")
     pmtile_name = blob_path.split("/")[-1]
     return f"{dst_blob}/{pmtile_name}"
+
 
 #
 # async def gdal_open_async(filename):
@@ -99,7 +100,6 @@ async def copy_raw2datasets(raw_blob_path: str, connection_string=None):
 
             src_blob = container_client.get_blob_client(blob_path)
             src_props = await src_blob.get_blob_properties()
-
 
             async with BlobLeaseClient(client=src_blob) as lease:
                 await lease.acquire(30)
@@ -149,14 +149,15 @@ async def upload_ingesting_blob(blob_path: str, container_name=None, connection_
         # Upload the ingesting file to the blob
         async with BlobServiceClient.from_connection_string(connection_string) as blob_service_client:
             async with blob_service_client.get_blob_client(
-                container=container_name, blob=ingesting_blob_path
+                    container=container_name, blob=ingesting_blob_path
             ) as blob_client:
                 await blob_client.upload_blob(b"ingesting", overwrite=True)
     except (ClientRequestError, ResourceNotFoundError) as e:
         logger.error(f"Failed to upload {ingesting_blob_path}: {e}")
 
 
-async def upload_error_blob(blob_path:str=None, error_message:str=None, container_name:str=None, connection_string=None):
+async def upload_error_blob(blob_path: str = None, error_message: str = None, container_name: str = None,
+                            connection_string=None):
     # handle the case when paths are coming from ingest_raster
     if f"/{container_name}/" in blob_path:
         blob_path = blob_path.split(f"/{container_name}/")[-1]
@@ -165,14 +166,14 @@ async def upload_error_blob(blob_path:str=None, error_message:str=None, containe
         # Upload the error message as a blob
         async with BlobServiceClient.from_connection_string(connection_string) as blob_service_client:
             async with blob_service_client.get_blob_client(
-                container=container_name, blob=error_blob_path
+                    container=container_name, blob=error_blob_path
             ) as blob_client:
                 await blob_client.upload_blob(error_message.encode("utf-8"), overwrite=True)
     except (ClientRequestError, ResourceNotFoundError) as e:
         logger.error(f"Failed to upload {error_blob_path}: {e}")
 
-async def handle_lock(receiver=None, message=None):
 
+async def handle_lock(receiver=None, message=None):
     """
     Renew  the AutolockRenewer lock registered on a servicebus message.
     Long running jobs and with unpredictable execution duration  pose few chalenges.
@@ -184,24 +185,24 @@ async def handle_lock(receiver=None, message=None):
 
     @return: None
     """
-    try:
-        msg_str = json.loads(str(message))
-        blob_path, token = msg_str.split(";")
-        logger.debug(f'Starting lock monitoring for {blob_path}')
-        while True:
-            lu = message.locked_until_utc
-            n = datetime.datetime.utcnow()
-            d = int((lu.replace(tzinfo=n.tzinfo)-n).total_seconds())
-            #logger.debug(f'locked until {lu} utc now is {n} lock expired {message._lock_expired} and will expire in  {d}')
-            if d < 10:
-                logger.debug('renewing lock')
-                await receiver.renew_message_lock(message=message,)
-            await asyncio.sleep(1)
-    except Exception as e:
-        logger.error(f'hl error {e}')
 
-def upload_blob(src_path:str=None, connection_string:str=None, container_name:str=None,
-                dst_blob_path:str=None,overwrite:bool=True,max_concurrency:int=8 )->None:
+    msg_str = json.loads(str(message))
+    blob_path, token = msg_str.split(";")
+    logger.debug(f'Starting lock monitoring for {blob_path}')
+    while True:
+        lu = message.locked_until_utc
+        n = datetime.datetime.utcnow()
+        d = int((lu.replace(tzinfo=n.tzinfo) - n).total_seconds())
+        # logger.debug(f'locked until {lu} utc now is {n} lock expired {message._lock_expired} and will expire in  {d}')
+        if d < 10:
+            logger.debug('renewing lock')
+            await receiver.renew_message_lock(message=message, )
+        await asyncio.sleep(1)
+
+
+
+def upload_blob(src_path: str = None, connection_string: str = None, container_name: str = None,
+                dst_blob_path: str = None, overwrite: bool = True, max_concurrency: int = 8) -> None:
     """
     Uploads the src_path file to Azure dst_blob_path located in container_name
     @param src_path: str, source file
@@ -222,25 +223,24 @@ def upload_blob(src_path:str=None, connection_string:str=None, container_name:st
 
 async def write(file_handle=None, stream=None, offset=None):
     data = await stream.read()
-    return await file_handle.write(data, offset=offset )
+    return await file_handle.write(data, offset=offset)
 
 
-
-async def write_chunked(file_handle=None, stream=None, offset=None, length=None, event=None, chunk_no=None,):
+async def write_chunked(file_handle=None, stream=None, offset=None, length=None, event=None, chunk_no=None, ):
     nwritten = 0
     async for chunk in stream.chunks():
         chunk_len = len(chunk)
-        chunk_offset = offset+chunk_len
-        ncwritten = await file_handle.write(chunk, offset=chunk_offset )
-        nwritten+=ncwritten
-        logger.info(f'downloaded {(nwritten/length)*100:.2f}% in chunk {chunk_no}')
+        chunk_offset = offset + chunk_len
+        ncwritten = await file_handle.write(chunk, offset=chunk_offset)
+        nwritten += ncwritten
+        logger.info(f'downloaded {(nwritten / length) * 100:.2f}% in chunk {chunk_no}')
 
         if event and event.is_set():
             raise TimeoutError(f'Partial download has timed out in chunk {chunk_no}')
     return nwritten
 
 
-async def download_blob(temp_dir=None, conn_string=None, blob_path=None, event=None, nchunks=5 ):
+async def download_blob(temp_dir=None, conn_string=None, blob_path=None, event=None, nchunks=5):
     """
     Asynchronously download blob_path into temp_dir. Supports cancellation through event
     argument. Can work in streaming mode or in concurrent chunked mode.
@@ -255,22 +255,21 @@ async def download_blob(temp_dir=None, conn_string=None, blob_path=None, event=N
     @return:
     """
 
-    async def progress(current, total)->None:
-        n = current/total*100
-        #if n % 10 == 2 and n/10 == 0:
-        logger.info(f'download status for {blob_path} - {n:.2f}%' )
-
+    async def progress(current, total) -> None:
+        n = current / total * 100
+        # if n % 10 == 2 and n/10 == 0:
+        logger.info(f'download status for {blob_path} - {n:.2f}%')
 
     container_name, *rest, file_name = blob_path.split("/")
     logger.info(f'{container_name} - {file_name}')
-    container_rel_blob_path = os.path.join(*rest,file_name)
+    container_rel_blob_path = os.path.join(*rest, file_name)
     logger.info(f'{container_name} - {container_rel_blob_path}')
     start = time.time()
 
     dst_file = os.path.join(temp_dir, file_name)
     async with AContainerClient.from_connection_string(conn_string, container_name,
-                                                       max_single_get_size=1*128*1024*1024,
-                                                       max_chunk_get_size=16*1024*1024 ) as cc:
+                                                       max_single_get_size=1 * 128 * 1024 * 1024,
+                                                       max_chunk_get_size=16 * 1024 * 1024) as cc:
         src_blob = cc.get_blob_client(container_rel_blob_path)
         src_props = await src_blob.get_blob_properties()
         size = src_props.size
@@ -279,32 +278,32 @@ async def download_blob(temp_dir=None, conn_string=None, blob_path=None, event=N
 
         if nchunks:
             async with AIOFile(dst_file, 'wb') as dstf:
-                chunk_size = size//nchunks
-                offsets = [i for i in range(0, size-chunk_size, chunk_size)]
-                lengths = [chunk_size] * (nchunks-1) + [size-chunk_size*(nchunks-1)]
+                chunk_size = size // nchunks
+                offsets = [i for i in range(0, size - chunk_size, chunk_size)]
+                lengths = [chunk_size] * (nchunks - 1) + [size - chunk_size * (nchunks - 1)]
                 tasks = list()
                 for chunk_no, item in enumerate(zip(offsets, lengths), start=1):
                     offset, length = item
-                    chunk_stream=await cc.download_blob(container_rel_blob_path,
-                                                 max_concurrency=1,
-                                                 progress_hook=progress,
-                                                 offset=offset,
-                                                 length=length
-                                                 )
+                    chunk_stream = await cc.download_blob(container_rel_blob_path,
+                                                          max_concurrency=1,
+                                                          progress_hook=progress,
+                                                          offset=offset,
+                                                          length=length
+                                                          )
                     tasks.append(
-                            asyncio.create_task(
-                                write_chunked(file_handle=dstf,
-                                              stream=chunk_stream,
-                                              offset=offset,
-                                              length=length,
-                                              chunk_no=chunk_no,
-                                              event=event
-                            )
+                        asyncio.create_task(
+                            write_chunked(file_handle=dstf,
+                                          stream=chunk_stream,
+                                          offset=offset,
+                                          length=length,
+                                          chunk_no=chunk_no,
+                                          event=event
+                                          )
                         )
                     )
 
                 results = await asyncio.gather(*tasks)
-                assert results==lengths
+                assert results == lengths
         else:
             with open(dst_file, 'wb') as dstf:
                 await close_container_client(cc=cc, event=event)
@@ -315,10 +314,9 @@ async def download_blob(temp_dir=None, conn_string=None, blob_path=None, event=N
                                                 )
                 await stream.readinto(dstf)
 
-
     end = time.time()
 
-    logger.info(f'download lasted {(end-start)/60 } minutes ')
+    logger.info(f'download lasted {(end - start) / 60} minutes ')
     return dst_file
 
 
@@ -342,7 +340,7 @@ async def close_container_client(cc=None, event=None):
         logger.info('dworking')
 
 
-def close_cc(cc=None, timeout_event:multiprocessing.Event=None, stop_download:multiprocessing.Event=None):
+def close_cc(cc=None, timeout_event: multiprocessing.Event = None, stop_download: multiprocessing.Event = None):
     """
     Monitor the event in an infinite loop and
     closes the client whenever the event is set
@@ -357,13 +355,15 @@ def close_cc(cc=None, timeout_event:multiprocessing.Event=None, stop_download:mu
             logger.debug('Stop download monitor')
             return
         if (timeout_event and timeout_event.is_set()):
+            logger.debug('Timeout has been signalled. Cancelling download')
             cc.close()
-            raise StopIteration()
+            return
 
         time.sleep(1)
 
 
-def download_blob_sync(src_blob_path=None, local_folder=None, conn_string=None, timeout_event:multiprocessing.Event=None)->str:
+def download_blob_sync(src_blob_path=None, local_folder=None, conn_string=None,
+                       timeout_event: multiprocessing.Event = None) -> str:
     """
     Download the src_blob_path into the local_folder
     @param timeout_download: object used  to signal timeout
@@ -379,37 +379,45 @@ def download_blob_sync(src_blob_path=None, local_folder=None, conn_string=None, 
 
     """
 
+    logtrack = []
 
-    def _progress_(current, total)->None:
-        logger.info(f'download status for {src_blob_path} - {current/total*100:.2f}%' )
+    def _progress_(current, total) -> None:
+        progress = current / total * 100
+        rounded_progress = int(math.floor(progress))
+        if rounded_progress not in logtrack and rounded_progress % 10 == 0:
+            logger.info(f'downloaded - {rounded_progress}%')
+            logtrack.append(rounded_progress)
 
     container_name, *rest, file_name = src_blob_path.split("/")
-    container_rel_blob_path = os.path.join(*rest,file_name)
+    container_rel_blob_path = os.path.join(*rest, file_name)
     dst_file = os.path.join(local_folder, file_name)
-    with open(dst_file, 'wb') as dstf:
-        stop_download = multiprocessing.Event()
-        try:
-            with ContainerClient.from_connection_string(conn_string, container_name ) as cc:
+    try:
+        with open(dst_file, 'wb') as dstf:
+            stop_download = multiprocessing.Event()
+            with ContainerClient.from_connection_string(conn_string, container_name) as cc:
                 cl = cc.get_blob_client(container_rel_blob_path)
                 blob_exists = cl.exists()
-                logger.info(f'does blob {container_rel_blob_path} exist?: {blob_exists}')
                 if not blob_exists:
-                    raise FileExistsError(f'{container_rel_blob_path} does not exist in container "{container_name}"')
-                # prepare an start  the monitor function in a separate thread
-                monitor = threading.Thread(target=close_cc, name='monitor', kwargs=dict(timeout_event=timeout_event, stop_download=stop_download))
+                    #upload error blob
+                    raise FileNotFoundError(f'{container_rel_blob_path} does not exist in container "{container_name}"')
+                # prepare and start the monitor function in a separate thread
+                monitor = threading.Thread(target=close_cc, name='monitor',
+                                           kwargs=dict(cc=cc, timeout_event=timeout_event, stop_download=stop_download))
                 monitor.start()
-                logger.info(f'Starting download for {container_rel_blob_path}')
+                logger.info(f'Downloading {container_rel_blob_path}')
                 stream = cc.download_blob(container_rel_blob_path, max_concurrency=8, progress_hook=_progress_)
                 stream.readinto(dstf)
                 # stop monitor thread
                 stop_download.set()
-        except StopIteration: #unusual but to be 100% sure the right path is taken
-            raise TimeoutError(f'Downloading {container_rel_blob_path} has timed out ')
+    except AttributeError as ae:
+        '''
+            This happens on timeout. As the connection is closed the session object from aiohttp becomes None
+            and throws this error.
+        '''
 
+        if "'request'" in str(ae):
+            raise TimeoutError(f'Downloading {src_blob_path} has timed out')
 
-
-
+    except Exception as e: #swallow the error
+        raise
     return dst_file
-
-
-

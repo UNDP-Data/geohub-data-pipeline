@@ -422,7 +422,7 @@ def process_geo_file(   src_file_path: str = None, join_vector_tiles:bool=False,
     try:
 
         # handle vectors first
-        logger.info(f'Opening {src_file_path}')
+        logger.debug(f'Opening {src_file_path}')
         try:
             vdataset = gdal.OpenEx(src_file_path, gdal.OF_VECTOR)
         except RuntimeError as ioe:
@@ -433,19 +433,22 @@ def process_geo_file(   src_file_path: str = None, join_vector_tiles:bool=False,
 
         if vdataset is not None:
             logger.info(f'Opened {src_file_path} with {vdataset.GetDriver().ShortName} vector driver')
-            logger.info(f'Found {vdataset.GetLayerCount()} vector layers')
-            layer_names = [vdataset.GetLayerByIndex(i).GetName() for i in range(vdataset.GetLayerCount())]
-            if not join_vector_tiles:
-                for layer_name in layer_names:
-                    logger.info(f'Ingesting vector layer "{layer_name}"')
-                    dataset2pmtiles(src_ds=vdataset, layers=[layer_name],timeout_event=timeout_event, conn_string=conn_string)
-            else:
-
-                logger.info(f'Ingesting all vector layers into one multilayer PMtiles file')
+            nvector_layers = vdataset.GetLayerCount()
+            if nvector_layers > 0:
+                logger.info(f'Found {nvector_layers} vector layers')
                 _, file_name = os.path.split(vdataset.GetDescription())
-                fname, ext = os.path.splitext(file_name)
-                dataset2pmtiles(src_ds=vdataset, layers=layer_names, pmtiles_file_name=fname, timeout_event=timeout_event, conn_string=conn_string)
+                layer_names = [vdataset.GetLayerByIndex(i).GetName() for i in range(nvector_layers)]
+                if not join_vector_tiles:
+                    for layer_name in layer_names:
+                        logger.info(f'Ingesting vector layer "{layer_name}"')
+                        dataset2pmtiles(src_ds=vdataset, layers=[layer_name],timeout_event=timeout_event, conn_string=conn_string)
+                else:
 
+                    logger.info(f'Ingesting all vector layers into one multilayer PMtiles file')
+                    fname, ext = os.path.splitext(file_name)
+                    dataset2pmtiles(src_ds=vdataset, layers=layer_names, pmtiles_file_name=fname, timeout_event=timeout_event, conn_string=conn_string)
+            else:
+                logger.info(f'{src_file_path} contains {nvector_layers} vector layers')
             del vdataset
         else:
             logger.info(f"{src_file_path} does not contain vector GIS data")
@@ -502,12 +505,9 @@ def process_geo_file(   src_file_path: str = None, join_vector_tiles:bool=False,
             if max(colorinterp) >= 3 or photometric is not None:
                 logger.info(f'Ingesting multiband dataset {src_file_path}')
                 dataset2cog(src_ds=rdataset, timeout_event=timeout_event)
-
-
             else:
                 logger.info(f'Found {nraster_bands} rasters')
                 for band_no in bands:
-                    #cog_path = prepare_cog_path(path=vsiaz_blob_path, band=band_no)
                     logger.info(f'Ingesting band {band_no} from {src_file_path}')
                     dataset2cog(src_ds=rdataset, bands=[band_no], timeout_event=timeout_event)
 

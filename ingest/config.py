@@ -33,7 +33,6 @@ GDAL_ARCHIVE_FORMATS = {
     ".tar": "vsitar",
     ".tgz": "vsitar",
     ".7z": "vsi7z",
-    ".rar": "vsirar",
 }
 
 
