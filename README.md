@@ -1,5 +1,5 @@
 # geohub-data-pipeline
-The "geohub-data-pipeline" is an API endpoint that receives the filepath from uploads on the [Geohub](https://github.com/UNDP-Data/geohub) platform and converts them to Cloud-Optimized GeoTIFF (COG) or PMTiles format and stores them in an Azure Blob storage container. This project is designed to be run in a Docker container on AKS as a deployment.
+The "geohub-data-pipeline" is a service that receives the filepath of an Azure blob from a service bus queue from uploads to the [Geohub](https://github.com/UNDP-Data/geohub) platform and converts them to Cloud-Optimized GeoTIFF (COG) or PMTiles format and stores them in an Azure Blob storage container. This project is designed to be run in a Docker container on AKS as a deployment.
 
 ## Getting Started
 
@@ -23,12 +23,7 @@ To configure the API, you'll need to create an `.env` file in the `deployments/s
 
 Here are the configuration options:
 
-- `AZURE_ACCESS_KEY`
-- `ACCOUNT_NAME`
-- `CREDENTIAL_STRING`
-- `CONTAINER_NAME`
-- `ACCOUNT_URL`
-- `CONNECTION_STRING`
+- `AZURE_STORAGE_CONNECTION_STRING`
 - `SERVICE_BUS_CONNECTION_STRING`
 - `SERVICE_BUS_QUEUE_NAME`	
 
@@ -58,12 +53,7 @@ To test the app locally, you can use Docker Compose to build and run the app in 
 
 3. Copy the `.env` file in to the root directory of the repository. This file will contain the environment variables that are used by the app. The following variables are required:
 
-- `AZURE_ACCESS_KEY`
-- `ACCOUNT_NAME`
-- `CREDENTIAL_STRING`
-- `CONTAINER_NAME`
-- `ACCOUNT_URL`
-- `CONNECTION_STRING`
+- `AZURE_STORAGE_CONNECTION_STRING`
 - `SERVICE_BUS_CONNECTION_STRING`
 - `SERVICE_BUS_QUEUE_NAME`
 
