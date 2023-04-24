@@ -148,6 +148,7 @@ async def ingest_message():
                                 em = m.getvalue()
                                 logger.error(em)
                             logger.info(f"Pushing {msg} to dead-letter sub-queue")
+
                             # await receiver.dead_letter_message(
                             #     msg, reason="message parse error", error_description=em
                             # )

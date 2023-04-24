@@ -328,12 +328,20 @@ def upload_blob(src_path: str = None, connection_string: str = None, container_n
     @param max_concurrency: 8
     @return:  None
     """
+    logtrack = []
+    def _progress_(current, total) -> None:
+        progress = current / total * 100
+        rounded_progress = int(math.floor(progress))
+        if rounded_progress not in logtrack and rounded_progress % 2 == 0:
+            logger.info(f'uploaded - {rounded_progress}%')
+            logtrack.append(rounded_progress)
+
     for attempt in range(1,4):
         try:
             with BlobServiceClient.from_connection_string(connection_string) as blob_service_client:
                 with blob_service_client.get_blob_client(container=container_name, blob=dst_blob_path) as blob_client:
                     with open(src_path, "rb") as upload_file:
-                        blob_client.upload_blob(upload_file, overwrite=overwrite, max_concurrency=max_concurrency)
+                        blob_client.upload_blob(upload_file, overwrite=overwrite, max_concurrency=max_concurrency, progress_hook=_progress_)
                     logger.info(f"Successfully wrote {src_path} to {dst_blob_path}")
                 #remove any error
                 error_blob_path = f'{dst_blob_path}.error'
