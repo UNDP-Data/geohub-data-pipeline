@@ -4,7 +4,6 @@ import math
 import os.path
 import threading
 import time
-import typing
 from urllib.parse import urlparse
 from azure.storage.blob.aio import BlobLeaseClient as ABlobLeaseClient, \
     BlobServiceClient as ABlobServiceClient, \
@@ -14,9 +13,6 @@ import json
 import datetime
 import multiprocessing
 from ingest.config import (
-    # account_url,
-    # connection_string,
-    # container_name,
     datasets_folder,
     raw_folder,
 )

@@ -9,20 +9,13 @@ from ingest.processing import process_geo_file
 from azure.servicebus.aio import AutoLockRenewer, ServiceBusClient
 from ingest.config import raw_folder, setup_env_vars
 import tempfile
-
-# from ingest.raster_to_cog import ingest_raster, ingest_raster_sync
 from ingest.utils import (
     copy_raw2datasets,
     handle_lock,
-
-    upload_content_to_blob,
     chop_blob_url,
     download_blob_sync,
     upload_timeout_blob
-
 )
-
-# from ingest.vector_to_tiles import ingest_vector, ingest_vector_sync
 
 logger = logging.getLogger(__name__)
 

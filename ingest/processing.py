@@ -11,8 +11,6 @@ from rio_cogeo import cog_validate
 
 import logging
 from ingest.utils import (
-    download_blob,
-    download_blob_sync,
     upload_blob,
     prepare_arch_path,
     get_local_cog_path,
