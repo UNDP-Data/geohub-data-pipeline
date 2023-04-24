@@ -19,18 +19,8 @@ spec:
           ports:
             - containerPort: 8000
           env:
-            - name: AZURE_ACCESS_KEY
-              value: "$AZURE_ACCESS_KEY"
-            - name: ACCOUNT_NAME
-              value: "$ACCOUNT_NAME"
-            - name: CREDENTIAL_STRING
-              value: "$CREDENTIAL_STRING"
-            - name: CONTAINER_NAME
-              value: "$CONTAINER_NAME"
-            - name: ACCOUNT_URL
-              value: "$ACCOUNT_URL"
-            - name: CONNECTION_STRING
-              value: "$CONNECTION_STRING"
+            - name: AZURE_STORAGE_CONNECTION_STRING
+              value: "$AZURE_STORAGE_CONNECTION_STRING"
             - name: SERVICE_BUS_CONNECTION_STRING
               value: "$SERVICE_BUS_CONNECTION_STRING"
             - name: SERVICE_BUS_QUEUE_NAME
