@@ -1,3 +1,5 @@
+import multiprocessing
+
 from ingest.processing import process_geo_file
 import logging
 
@@ -14,9 +16,16 @@ if __name__ == '__main__':
     logger.handlers.clear()
     logger.addHandler(sthandler)
     logger.name = __name__
-    fpath = '/data/File_GeoHub_Geodatabase.gdb'
+    logger.setLevel(logging.DEBUG)
+    fpath = '/data/File_GeoHub_Geodatabase.gdb.zip'
     #fpath = '/vsizip/data/featuredataset.gdb.zip'
-    #fpath = '/data/Sample.gpkg'
+    fpath = '/data/Sample.gpkg'
     #fpath = '/data/Percent_electricity_access_2012.tif'
-    #fpath = '/data/devel.tif'
-    process_geo_file(vsiaz_blob_path=fpath, join_vector_tiles=True)
+    fpath = '/data/rgbcog.tif'
+
+    try:
+        cancel_event = multiprocessing.Event()
+        process_geo_file(src_file_path=fpath, dst_directory='/data/out',  join_vector_tiles=True, timeout_event=cancel_event)
+    except KeyboardInterrupt:
+        logger.info('Cancelling')
+        cancel_event.set()

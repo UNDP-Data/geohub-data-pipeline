@@ -32,127 +32,128 @@ CONNECTION_STR = os.environ["SERVICE_BUS_CONNECTION_STRING"]
 QUEUE_NAME = os.environ["SERVICE_BUS_QUEUE_NAME"]
 AZ_STORAGE_CONN_STR = os.environ['AZURE_STORAGE_CONNECTION_STRING']
 
-
 async def ingest_message():
     async with ServiceBusClient.from_connection_string(
             conn_str=CONNECTION_STR, logging_enable=True
     ) as servicebus_client:
         async with servicebus_client.get_queue_receiver(
                 queue_name=QUEUE_NAME,
-                prefetch_count=0,
+                #prefetch_count=0,
         ) as receiver:  # get one message without caching
-            async with receiver:
-                while True:
-                    received_msgs = await receiver.receive_messages(
-                        max_message_count=1, max_wait_time=5
-                    )
 
-                    if not received_msgs:
-                        logger.info(f'No (more) messages to process. Queue "{QUEUE_NAME}" is empty')
-                        break
+            while True:
+                received_msgs = await receiver.receive_messages(
+                    max_message_count=1,
+                    max_wait_time=5
 
-                    for msg in received_msgs:
-                        try:
-                            msg_str = json.loads(str(msg))
-                            blob_url, token = msg_str.split(";")
-                            if not 'Sample' in blob_url: continue
-                            logger.info(
-                                f"Received blob: {blob_url} from queue"
+                )
+
+                if not received_msgs:
+                    logger.info(f'No (more) messages to process. Queue "{QUEUE_NAME}" is empty')
+                    break
+
+                for msg in received_msgs:
+                    try:
+                        msg_str = json.loads(str(msg))
+                        blob_url, token = msg_str.split(";")
+                        #if not 'Sample' in blob_url: continue
+                        logger.info(
+                            f"Received blob: {blob_url} from queue"
+                        )
+
+                        async with AutoLockRenewer() as auto_lock_renewer:
+                            auto_lock_renewer.register(
+                                receiver=receiver, renewable=msg
                             )
+                            if f"/{raw_folder}/" in blob_url:
+                                """
+                                First, it looks like the max_lock_renewal_duration arg is not working as it should be,
+                                or, I have no idea how to use it properly. So far the queue has been honouring the
+                                lock_time as set in the Azure portal through the web interface.
+                                Second, to ensure a smooth ride, the message is registered and then the lock is renewed
+                                in an infinite loop ten seconds before the lock_time due ot networking. Shorter time lead to
+                                inconsistent behaviour. As a result the ingest is done concurrently using asyncio.wait with lock
+                                renewal and it will usually end first because the lock renewal is infinite.
+                                The asyncio.wait returns when the ingest has completed or an exception has been encountered.
+                                It also uses a hard timeout which should ensure the ingest can not get stuck.
+                                asyncio.wait throws no errors and returns two lists, done and pending, the ingest will be in done and the lock renewal will be
+                                still running in the pending. FOr ths reason, the lock task has to be cancelled disregarding
+                                whether the ingest task was successful or failed.
+                                It might be a good idea for the ingest to return a value but this is not necessary.
 
-                            async with AutoLockRenewer() as auto_lock_renewer:
-                                auto_lock_renewer.register(
-                                    receiver=receiver, renewable=msg
+                                The ingest future must be awaited and this is where an exception is thrown in case the ingest task
+                                 has failed. In this case the lock  task has to be canceled and the error including the traceback is
+                                 extracted and the message is dead lettered.
+
+
+                                
+                                """
+
+                                timeout_event = multiprocessing.Event()
+                                ingest_task = asyncio.ensure_future(
+                                    asyncio.to_thread(sync_ingest, blob_url=blob_url, timeout_event=timeout_event,
+                                                      conn_string=AZ_STORAGE_CONN_STR)
                                 )
-                                if f"/{raw_folder}/" in blob_url:
-                                    """
-                                    First, it looks like the max_lock_renewal_duration arg is not working as it should be,
-                                    or, I have no idea how to use it properly. So far the queue has been honouring the
-                                    lock_time as set in the Azure portal through the web interface.
-                                    Second, to ensure a smooth ride, the message is registered and then the lock is renewed
-                                    in an infinite loop ten seconds before the lock_time due ot networking. Shorter time lead to
-                                    inconsistent behaviour. As a result the ingest is done concurrently using asyncio.wait with lock
-                                    renewal and it will usually end first because the lock renewal is infinite.
-                                    The asyncio.wait returns when the ingest has completed or an exception has been encountered.
-                                    It also uses a hard timeout which should ensure the ingest can not get stuck.
-                                    asyncio.wait throws no errors and returns two lists, done and pending, the ingest will be in done and the lock renewal will be
-                                    still running in the pending. FOr ths reason, the lock task has to be cancelled disregarding
-                                    whether the ingest task was successful or failed.
-                                    It might be a good idea for the ingest to return a value but this is not necessary.
+                                ingest_task.set_name('ingest')
+                                lock_task = asyncio.ensure_future(
+                                    handle_lock(receiver=receiver, message=msg, timeout_event=timeout_event)
+                                )
+                                lock_task.set_name('lock')
 
-                                    The ingest future must be awaited and this is where an exception is thrown in case the ingest task
-                                     has failed. In this case the lock  task has to be canceled and the error including the traceback is
-                                     extracted and the message is dead lettered.
-
-
-                                    
-                                    """
-
-                                    timeout_event = multiprocessing.Event()
-                                    ingest_task = asyncio.ensure_future(
-                                        asyncio.to_thread(sync_ingest, blob_url=blob_url, timeout_event=timeout_event,
-                                                          conn_string=AZ_STORAGE_CONN_STR)
-                                    )
-                                    ingest_task.set_name('ingest')
-                                    lock_task = asyncio.ensure_future(
-                                        handle_lock(receiver=receiver, message=msg, timeout_event=timeout_event)
-                                    )
-                                    lock_task.set_name('lock')
-
-                                    done, pending = await asyncio.wait(
-                                        [lock_task, ingest_task],
-                                        return_when=asyncio.FIRST_COMPLETED,
-                                        timeout=INGEST_TIMEOUT,
-                                    )
-                                    if len(done) == 0:
-                                        logger.info(
-                                            f'Ingesting {blob_url} has timed out after {INGEST_TIMEOUT} seconds.')
-                                        timeout_event.set()
-                                        # upload an blob to the /dataset/{datasetname} folder.
-                                        await upload_timeout_blob(blob_url=blob_url, connection_string=AZ_STORAGE_CONN_STR)
-
-                                    logger.debug(f'Handling done tasks')
-
-                                    for done_future in done:
-                                        try:
-                                            await done_future
-                                            # await receiver.complete_message(msg)
-                                        except Exception as e:
-                                            with StringIO() as m:
-                                                print_exc(file=m)
-                                                em = m.getvalue()
-                                                logger.error(f'done future error {em}')
-
-                                    logger.debug(f'Cancelling pending tasks')
-
-                                    for pending_future in pending:
-                                        try:
-                                            pending_future.cancel()
-                                            await pending_future
-                                        except asyncio.CancelledError:
-                                            logger.debug(
-                                                f'Pending future {pending_future.get_name()} has been cancelled')
-                                        except Exception as e:
-                                            raise
-
-                                else:
+                                done, pending = await asyncio.wait(
+                                    [lock_task, ingest_task],
+                                    return_when=asyncio.FIRST_COMPLETED,
+                                    timeout=INGEST_TIMEOUT,
+                                )
+                                if len(done) == 0:
                                     logger.info(
-                                        f"Skipping {blob_url} because it is not in the {raw_folder} folder"
-                                    )
-                                    await receiver.complete_message(msg)
-                                    logger.info(f"Completed message for: {blob_url}")
+                                        f'Ingesting {blob_url} has timed out after {INGEST_TIMEOUT} seconds.')
+                                    timeout_event.set()
+                                    # upload an blob to the /dataset/{datasetname} folder.
+                                    await upload_timeout_blob(blob_url=blob_url, connection_string=AZ_STORAGE_CONN_STR)
 
-                        except Exception as pe:  # this  first level might be redundant
-                            with StringIO() as m:
-                                print_exc(file=m)
-                                em = m.getvalue()
-                                logger.error(em)
-                            logger.info(f"Pushing {msg} to dead-letter sub-queue")
+                                logger.debug(f'Handling done tasks')
 
-                            # await receiver.dead_letter_message(
-                            #     msg, reason="message parse error", error_description=em
-                            # )
-                            continue
+                                for done_future in done:
+                                    try:
+                                        await done_future
+                                        # await receiver.complete_message(msg)
+                                    except Exception as e:
+                                        with StringIO() as m:
+                                            print_exc(file=m)
+                                            em = m.getvalue()
+                                            logger.error(f'done future error {em}')
+
+                                logger.debug(f'Cancelling pending tasks')
+
+                                for pending_future in pending:
+                                    try:
+                                        pending_future.cancel()
+                                        await pending_future
+                                    except asyncio.CancelledError:
+                                        logger.debug(
+                                            f'Pending future {pending_future.get_name()} has been cancelled')
+                                    except Exception as e:
+                                        raise
+
+                            else:
+                                logger.info(
+                                    f"Skipping {blob_url} because it is not in the {raw_folder} folder"
+                                )
+                                await receiver.complete_message(msg)
+                                logger.info(f"Completed message for: {blob_url}")
+
+                    except Exception as pe:  # this  first level might be redundant
+                        with StringIO() as m:
+                            print_exc(file=m)
+                            em = m.getvalue()
+                            logger.error(em)
+                        logger.info(f"Pushing {msg} to dead-letter sub-queue")
+
+                        # await receiver.dead_letter_message(
+                        #     msg, reason="message parse error", error_description=em
+                        # )
+                        continue
 
 
 def sync_ingest(blob_url: str = None, token: str = None, timeout_event: multiprocessing.Event = None,
@@ -204,7 +205,7 @@ def sync_ingest(blob_url: str = None, token: str = None, timeout_event: multipro
                 )
                 if not temp_data_file:
                     raise Exception(f'Undetected exception has occurred while downloading {blob_path}')
-                process_geo_file(datafile_url=blob_url,src_file_path=temp_data_file, join_vector_tiles=False, timeout_event=timeout_event,
+                process_geo_file(blob_url=blob_url,src_file_path=temp_data_file, join_vector_tiles=False, timeout_event=timeout_event,
                                  conn_string=conn_string)
                 logger.info(f"Finished ingesting {blob_url}")
         except TimeoutError as te:

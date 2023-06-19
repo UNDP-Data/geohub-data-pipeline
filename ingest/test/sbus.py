@@ -1,7 +1,7 @@
 from dotenv import dotenv_values
 cfg = dotenv_values('../../.env')
-CONNECTION_STR = cfg['SERVICE_BUS_CONNECTION_STRING_DEV']
-QUEUE_NAME='data-upload-dev'
+CONNECTION_STR = cfg['SERVICE_BUS_CONNECTION_STRING']
+QUEUE_NAME='data-upload'
 from azure.servicebus.aio import ServiceBusClient
 from azure.servicebus import ServiceBusMessage
 import random
@@ -27,9 +27,22 @@ async def consume():
     async with ServiceBusClient.from_connection_string(conn_str=CONNECTION_STR, logging_enable=True) as servicebus_client:
         async with servicebus_client.get_queue_receiver(queue_name=QUEUE_NAME) as receiver:
             async with receiver:
-                received_msgs = await receiver.peek_messages(max_message_count=2)
-                for msg in received_msgs:
-                    logger.info(str(msg))
+                # received_msgs = await receiver.peek_messages(max_message_count=2)
+                # for msg in received_msgs:
+                #     logger.info(str(msg))
+                # exit()
+                while True:
+                    received_msgs = await receiver.receive_messages(
+                        max_message_count=1, max_wait_time=5
+                    )
+
+                    if not received_msgs:
+                        logger.info(f'No (more) messages to process. Queue "{QUEUE_NAME}" is empty')
+                        break
+
+                    for msg in received_msgs:
+                        logger.info(str(msg))
+
 
 
 #asyncio.run(produce())

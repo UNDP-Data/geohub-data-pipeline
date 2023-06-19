@@ -35,6 +35,7 @@ GDAL_ARCHIVE_FORMATS = {
     ".7z": "vsi7z",
 }
 
+OUT_FORMATS = {'.pmtiles': 'PMTiles', '.tif':'GeoTIFF', 'tiff':'GeoTIFF'}
 
 """
 GeoTIFF (.tif, .tiff)

@@ -1,0 +1,14 @@
+version: '3'
+services:
+  app:
+    user: 1000:1000
+    build: ../
+    command: "python -m ingest.cli.main"
+    env_file:
+      - ../.env
+    environment:
+      - user=1000
+    volumes:
+      - /home/janf/Downloads/data:/data
+      - /etc/passwd:/etc/passwd:ro
+      - /etc/group:/etc/group:ro

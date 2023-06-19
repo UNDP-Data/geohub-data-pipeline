@@ -15,6 +15,7 @@ import multiprocessing
 from ingest.config import (
     datasets_folder,
     raw_folder,
+    OUT_FORMATS
 )
 
 from aiofile import AIOFile
@@ -24,6 +25,33 @@ from ingest.ingest_exceptions import ClientRequestError, ResourceNotFoundError
 logger = logging.getLogger(__name__)
 
 
+def is_raster(path: str = None):
+    """
+    Check if a path is  raster/TIFF
+    @param path:
+    @return:
+    """
+    p, file_name = os.path.split(path)
+    fname, ext = os.path.splitext(file_name)
+    rast_formats = [e for e in OUT_FORMATS if 'tif' in e]
+    return os.path.isfile(path) and ext and ext in rast_formats
+
+def is_vector(path: str = None):
+    """
+    Check if a path is vector/PMTiles
+    @param path:
+    @return:
+    """
+    p, file_name = os.path.split(path)
+    fname, ext = os.path.splitext(file_name)
+    vect_formats = [e for e in OUT_FORMATS if 'tif' not in e]
+    return os.path.isfile(path) and ext and ext in vect_formats
+
+def exists_and_isabs(path):
+    f, _ = os.path.split(path)[0]
+    return os.path.exists(f) and os.path.isabs(f)
+
+
 def chop_blob_url(blob_url: str) -> str:
     """
     Safely extract relative path of the blob from its url using urllib
@@ -31,17 +59,18 @@ def chop_blob_url(blob_url: str) -> str:
     return urlparse(blob_url).path[1:]  # 1 is to exclude the start slash/path separator
     # because the os.path.join disregards any args that start with path sep
 
-def prepare_arch_path(src_path:str=None) -> str:
 
+def prepare_arch_path(src_path: str = None) -> str:
     assert os.path.isabs(src_path), f'{src_path} has tot be an absolute path'
 
     _, ext = os.path.splitext(src_path)
 
     if ext in GDAL_ARCHIVE_FORMATS:
         arch_driver = GDAL_ARCHIVE_FORMATS[ext]
-        return os.path.join(os.path.sep, arch_driver, src_path[1:] )
+        return os.path.join(os.path.sep, arch_driver, src_path[1:])
     else:
         return src_path
+
 
 def prepare_vsiaz_path(blob_path: str) -> str:
     """
@@ -64,20 +93,16 @@ def get_dst_blob_path(blob_path: str, file_name=None) -> str:
     return f"{dst_blob}/{file_name}"
 
 
-def get_azure_blob_path(datafile_url=None, local_path=None ):
-
+def get_azure_blob_path(blob_url=None, local_path=None):
     _, file_name = os.path.split(local_path)
-    raw_blob_path = chop_blob_url(datafile_url)
-    datasets_blob_path  = get_dst_blob_path(blob_path=raw_blob_path, file_name=file_name)
+    raw_blob_path = chop_blob_url(blob_url)
+    datasets_blob_path = get_dst_blob_path(blob_path=raw_blob_path, file_name=file_name)
     container_name, *rest, blob_name = datasets_blob_path.split("/")
 
     return container_name, os.path.join(*rest, blob_name)
 
 
-
-
-def get_local_cog_path(src_path: str = None, dst_folder:str=None, band=None):
-
+def get_local_cog_path(src_path: str = None, dst_folder: str = None, band=None):
     folders, fname = os.path.split(src_path)
     fname_without_ext, ext = os.path.splitext(fname)
     if src_path.count(':') == 2:
@@ -92,7 +117,6 @@ def get_local_cog_path(src_path: str = None, dst_folder:str=None, band=None):
         return f'{os.path.join(dst_folder, f"{fname_without_ext}_band{band}.tif")}'
 
 
-
 async def upload_timeout_blob(blob_url: str, connection_string=None, ):
     """
 
@@ -102,7 +126,7 @@ async def upload_timeout_blob(blob_url: str, connection_string=None, ):
     @return:
     """
     raw_blob_path = chop_blob_url(blob_url)
-    datasets_blob_path  = get_dst_blob_path(blob_path=raw_blob_path)
+    datasets_blob_path = get_dst_blob_path(blob_path=raw_blob_path)
     container_name, *rest, blob_name = datasets_blob_path.split("/")
     timeout_blob_path = os.path.join(*rest, f'{blob_name}.timeout')
 
@@ -116,7 +140,8 @@ async def upload_timeout_blob(blob_url: str, connection_string=None, ):
     except (ClientRequestError, ResourceNotFoundError) as e:
         logger.error(f"Failed to upload {timeout_blob_path}: {e}")
 
-async def upload_layer_status_blob(datafile_url: str, layer_name:str = None, connection_string=None, ):
+
+async def upload_layer_status_blob(datafile_url: str, layer_name: str = None, connection_string=None, ):
     """
 
     @param blob_path:
@@ -125,7 +150,7 @@ async def upload_layer_status_blob(datafile_url: str, layer_name:str = None, con
     @return:
     """
     datafile_blob_path = chop_blob_url(datafile_url)
-    datasets_blob_path  = get_dst_blob_path(blob_path=datafile_blob_path)
+    datasets_blob_path = get_dst_blob_path(blob_path=datafile_blob_path)
     container_name, *rest, blob_name = datasets_blob_path.split("/")
     timeout_blob_path = os.path.join(*rest, f'{blob_name}.timeout')
 
@@ -138,6 +163,7 @@ async def upload_layer_status_blob(datafile_url: str, layer_name:str = None, con
                 await blob_client.upload_blob(b"timeout", overwrite=True)
     except (ClientRequestError, ResourceNotFoundError) as e:
         logger.error(f"Failed to upload {timeout_blob_path}: {e}")
+
 
 #
 # async def gdal_open_async(filename):
@@ -258,7 +284,7 @@ async def upload_error_blob(blob_path: str = None, error_message: str = None, co
         logger.error(f"Failed to upload {error_blob_path}: {e}")
 
 
-async def handle_lock(receiver=None, message=None, timeout_event:multiprocessing.Event=None):
+async def handle_lock(receiver=None, message=None, timeout_event: multiprocessing.Event = None):
     """
     Renew  the AutolockRenewer lock registered on a servicebus message.
     Long running jobs and with unpredictable execution duration  pose few chalenges.
@@ -290,8 +316,9 @@ async def handle_lock(receiver=None, message=None, timeout_event:multiprocessing
                 raise
         await asyncio.sleep(1)
 
-def upload_content_to_blob(content = None, connection_string: str = None, container_name: str = None,
-                dst_blob_path: str = None, overwrite: bool = True, max_concurrency: int = 8) -> None:
+
+def upload_content_to_blob(content=None, connection_string: str = None, container_name: str = None,
+                           dst_blob_path: str = None, overwrite: bool = True, max_concurrency: int = 8) -> None:
     """
     Uploads the src_path file to Azure dst_blob_path located in container_name
     @param content: str, source file
@@ -302,19 +329,20 @@ def upload_content_to_blob(content = None, connection_string: str = None, contai
     @param max_concurrency: 8
     @return:  None
     """
-    for attempt in range(1,4):
+    for attempt in range(1, 4):
         try:
             with BlobServiceClient.from_connection_string(connection_string) as blob_service_client:
                 with blob_service_client.get_blob_client(container=container_name, blob=dst_blob_path) as blob_client:
-                   blob_client.upload_blob(content, overwrite=overwrite, max_concurrency=max_concurrency)
+                    blob_client.upload_blob(content, overwrite=overwrite, max_concurrency=max_concurrency)
             logger.info(f"Successfully wrote content to {dst_blob_path}")
             break
         except Exception as e:
-            if attempt ==  3:
+            if attempt == 3:
                 logger.info(f'Failed to upload content to {dst_blob_path} in attempt no {attempt}.')
                 raise
             logger.info(f'Failed to upload content to {dst_blob_path} in attempt no {attempt}. Trying again... ')
             continue
+
 
 def upload_blob(src_path: str = None, connection_string: str = None, container_name: str = None,
                 dst_blob_path: str = None, overwrite: bool = True, max_concurrency: int = 8) -> None:
@@ -329,6 +357,7 @@ def upload_blob(src_path: str = None, connection_string: str = None, container_n
     @return:  None
     """
     logtrack = []
+
     def _progress_(current, total) -> None:
         progress = current / total * 100
         rounded_progress = int(math.floor(progress))
@@ -336,16 +365,18 @@ def upload_blob(src_path: str = None, connection_string: str = None, container_n
             logger.info(f'uploaded - {rounded_progress}%')
             logtrack.append(rounded_progress)
 
-    for attempt in range(1,4):
+    for attempt in range(1, 4):
         try:
             with BlobServiceClient.from_connection_string(connection_string) as blob_service_client:
                 with blob_service_client.get_blob_client(container=container_name, blob=dst_blob_path) as blob_client:
                     with open(src_path, "rb") as upload_file:
-                        blob_client.upload_blob(upload_file, overwrite=overwrite, max_concurrency=max_concurrency, progress_hook=_progress_)
+                        blob_client.upload_blob(upload_file, overwrite=overwrite, max_concurrency=max_concurrency,
+                                                progress_hook=_progress_)
                     logger.info(f"Successfully wrote {src_path} to {dst_blob_path}")
-                #remove any error
+                # remove any error
                 error_blob_path = f'{dst_blob_path}.error'
-                with blob_service_client.get_blob_client(container=container_name, blob=error_blob_path) as error_blob_client:
+                with blob_service_client.get_blob_client(container=container_name,
+                                                         blob=error_blob_path) as error_blob_client:
                     if error_blob_client.exists():
                         error_blob_client.delete_blob(delete_snapshots=True)
 
@@ -535,7 +566,7 @@ def download_blob_sync(src_blob_path=None, local_folder=None, conn_string=None,
                 cl = cc.get_blob_client(container_rel_blob_path)
                 blob_exists = cl.exists()
                 if not blob_exists:
-                    #upload error blob
+                    # upload error blob
                     raise FileNotFoundError(f'{container_rel_blob_path} does not exist in container "{container_name}"')
                 # prepare and start the monitor function in a separate thread
                 monitor = threading.Thread(target=close_cc, name='monitor',
@@ -555,6 +586,6 @@ def download_blob_sync(src_blob_path=None, local_folder=None, conn_string=None,
         if "'request'" in str(ae):
             raise TimeoutError(f'Downloading {src_blob_path} has timed out')
 
-    except Exception as e: #swallow the error
+    except Exception as e:  # swallow the error
         raise
     return dst_file
