@@ -1,8 +1,9 @@
+#!/usr/bin/python
 import multiprocessing
-
 from ingest.processing import process_geo_file
+import argparse
 import logging
-
+import sys
 
 if __name__ == '__main__':
     logging.basicConfig()
@@ -16,16 +17,31 @@ if __name__ == '__main__':
     logger.handlers.clear()
     logger.addHandler(sthandler)
     logger.name = __name__
-    logger.setLevel(logging.DEBUG)
-    fpath = '/data/File_GeoHub_Geodatabase.gdb.zip'
-    #fpath = '/vsizip/data/featuredataset.gdb.zip'
-    fpath = '/data/Sample.gpkg'
-    #fpath = '/data/Percent_electricity_access_2012.tif'
-    fpath = '/data/rgbcog.tif'
+    logger.setLevel(logging.INFO)
+    parser = argparse.ArgumentParser(description='Convert layers/bands from GDAL supported geospatial data files to COGs/PMtiles.',
+                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('-src', '--source-file',
+                        help='A full absolute path to a geospatial data file.',
+                        type=str,  )
+    parser.add_argument('-dst', '--destination-directory',
+                        help='A full absolute path to a folder where the files will be written.',
+                        type=str,  )
+    parser.add_argument('-j', '--join-vector-tiles', action='store_true',
+                        help='Boolean flag to specify whether to create a multilayer PMtiles file'
+                             'in case the source file contains more then one vector layer',
+                        default=False
+                        ),
+    parser.add_argument('-d', '--debug', action='store_true',
+                        help='Set log level to debug', default=False
+                        )
 
-    try:
-        cancel_event = multiprocessing.Event()
-        process_geo_file(src_file_path=fpath, dst_directory='/data/out',  join_vector_tiles=True, timeout_event=cancel_event)
-    except KeyboardInterrupt:
-        logger.info('Cancelling')
-        cancel_event.set()
+    args = parser.parse_args(args=None if sys.argv[1:] else ['--help'])
+    if args.debug:
+        logger.setLevel(logging.DEBUG)
+    cancel_event = multiprocessing.Event()
+    process_geo_file(src_file_path=args.source_file, dst_directory=args.destination_directory,
+                     join_vector_tiles=args.join_vector_tiles)#, timeout_event=cancel_event)
+
+
+
+

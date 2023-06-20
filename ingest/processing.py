@@ -11,13 +11,11 @@ from rio_cogeo import cog_validate
 
 import logging
 from ingest.utils import (
-    upload_blob,
     prepare_arch_path,
     get_local_cog_path,
     get_azure_blob_path,
-    upload_content_to_blob,
 )
-
+from ingest.azblob import upload_blob, upload_content_to_blob
 from traceback import print_exc
 
 gdal.UseExceptions()
@@ -184,11 +182,13 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
     @param conn_string: the connection string used t connect to the Azure storage account
     @return:
     """
+
     if pmtiles_file_name is None:
         for layer_name, fgb_layer_path in fgb_layers.items():
             try:
                 if dst_directory:
-                    layer_pmtiles_path = os.path.join(dst_directory, layer_name, '.pmtiles')
+
+                    layer_pmtiles_path = os.path.join(dst_directory, f'{layer_name}.pmtiles')
                 else:
                     layer_pmtiles_path = fgb_layer_path.replace('.fgb', '.pmtiles')
 
