@@ -78,11 +78,11 @@ To test the app locally, you can use Docker Compose to build and run the app in 
 ## Running the pipeline as a command line tool
 While the pipeline was designed to be executed within and leverage cloud environment, sometimes it may be desirable
 to run it as a command line tool. 
-In general the best option ot run GDAL dependent pythin software is through docker.
+In general the best option ot run GDAL dependent python software is through docker.
 This is to avoid potential issues that could arise from GDAL dependencies and version mismatch.
 
 An viable alternative would be to create a setup.py/pyproject.toml but that
-assumes the sued has a  decent understanding of GDAL internals.
+assumes the user has a  decent understanding of GDAL internals.
 
 For the sake of simplicity we choose to rely on docker.
 
@@ -130,7 +130,7 @@ options:
 
 ```
 
-###FAQs
+### FAQs
 1. what geospatial formats are supported
 ANSWER: anything GDAL supports. Beware the image uses latest GDAL image (3.7)
 2. what does the tool do?
