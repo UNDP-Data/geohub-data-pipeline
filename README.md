@@ -73,3 +73,74 @@ To test the app locally, you can use Docker Compose to build and run the app in 
     This command will stop and remove the Docker container.
 
 **Note:** This is only a local development environment. For production deployment, you should use a production-grade Docker image and deploy it to a production environment.
+
+
+## Running the pipeline as a command line tool
+While the pipeline was designed to be executed and leverage cloud environment, sometimes it may be desirable
+to run it as a command line tool. 
+In general the best option ot run GDAL dependent pythin software is through docker.
+This is to avoid potential issues that could arise from GDAL dependencies and version mismatch.
+
+An viable alternative would be to create a setup.py/pyproject.toml but that
+assumes the sued has a  decent understanding of GDAL internals.
+
+For the sake of simplicity we choose to rely on docker.
+
+1. Clone the repository to your local machine.
+
+        git clone https://github.com/UNDP-Data/geohub-data-pipeline.git
+
+
+2. Navigate to the cloned repository.
+
+        cd geohub-data-pipeline
+
+3. Build the docker image and assign it a meaningful tag
+
+   ```
+   docker build . -t geohub-data-pipeline
+   ```
+4. Run the command line version
+   ```commandline
+   docker run --rm -it  -v /home/janf/Downloads/data:/data geohub-data-pipeline python -m ingest.cli.main -src /data/Sample.gpkg -dst /data/out/ 
+
+   ```
+The above command will run the previously built image in a new container,
+will remove it afterwards, maps the "/home/janf/Downloads/data" folder as **/data** folder inside the container and finally
+call the command line version of the pipeline to convert all vector layers to PMTiles and raster bands to COG format
+
+if the command line script is called without any args the help is displayed
+```commandline
+docker run --rm -it  -v /home/janf/Downloads/data:/data geohub-data-pipeline python -m ingest.cli.main
+/usr/local/lib/python3.10/dist-packages/rio_cogeo/profiles.py:182: UserWarning: Non-standard compression schema: zstd. The output COG might not be fully supported by software not build against latest libtiff.
+  warnings.warn(
+usage: main.py [-h] [-src SOURCE_FILE] [-dst DESTINATION_DIRECTORY] [-j] [-d]
+
+Convert layers/bands from GDAL supported geospatial data files to COGs/PMtiles.
+
+options:
+  -h, --help            show this help message and exit
+  -src SOURCE_FILE, --source-file SOURCE_FILE
+                        A full absolute path to a geospatial data file. (default: None)
+  -dst DESTINATION_DIRECTORY, --destination-directory DESTINATION_DIRECTORY
+                        A full absolute path to a folder where the files will be written. (default: None)
+  -j, --join-vector-tiles
+                        Boolean flag to specify whether to create a multilayer PMtiles filein case the source file contains more then one vector layer (default: False)
+  -d, --debug           Set log level to debug (default: False)
+
+```
+
+###FAQs
+1. what geospatial formats are supported
+ANSWER: anything GDAL supports. Beware the image uses latest GDAL image (3.7)
+2. what does the tool do?
+ANSWER: - converts all vector layers to PMtiles format
+        - optionally create a multilayer PMtiles in case join argument is set to True
+        - convert all raster bands or RGB rasters into COG, featuring zstd compression and 
+          Google Web mercator projection
+3. are any environmental variables needed?
+ANSWER: NO
+
+
+
+        
