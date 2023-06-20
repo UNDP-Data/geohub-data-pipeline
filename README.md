@@ -76,7 +76,7 @@ To test the app locally, you can use Docker Compose to build and run the app in 
 
 
 ## Running the pipeline as a command line tool
-While the pipeline was designed to be executed and leverage cloud environment, sometimes it may be desirable
+While the pipeline was designed to be executed within and leverage cloud environment, sometimes it may be desirable
 to run it as a command line tool. 
 In general the best option ot run GDAL dependent pythin software is through docker.
 This is to avoid potential issues that could arise from GDAL dependencies and version mismatch.
