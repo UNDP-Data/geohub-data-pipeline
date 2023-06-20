@@ -134,10 +134,11 @@ options:
 1. What geospatial formats are supported?</p>
 ANSWER: anything GDAL supports. Beware the image uses latest GDAL image (3.7)
 2. What does the tool do? </p>
-ANSWER: - converts all vector layers to PMtiles format
-        - optionally create a multilayer PMtiles in case join argument is set to True
-        - convert all raster bands or RGB rasters into COG, featuring zstd compression and 
-          Google Web mercator projection
+ANSWER: 
+   - converts all vector layers to PMtiles format
+   - optionally create a multilayer PMtiles in case join argument is set to True
+   - convert all raster bands or RGB rasters into COG, featuring zstd compression and 
+   Google Web mercator projection
 3. Are any environmental variables needed? </p>
 ANSWER: NO
 
