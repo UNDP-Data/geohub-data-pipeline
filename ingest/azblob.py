@@ -125,7 +125,7 @@ async def copy_raw2datasets(raw_blob_path: str, connection_string=None):
 
                 dst_blob_path = get_dst_blob_path(blob_path)
                 logger.info(f"Copying {raw_blob_path} to {dst_blob_path}")
-                await upload_ingesting_blob(dst_blob_path, container_name=container_name, connection_string=connection_string)
+                upload_ingesting_blob(dst_blob_path, container_name=container_name, connection_string=connection_string)
                 dst_blob = container_client.get_blob_client(dst_blob_path)
 
                 logger.info(f"Copied {raw_blob_path} to {dst_blob_path}")
@@ -163,7 +163,7 @@ async def copy_raw2datasets(raw_blob_path: str, connection_string=None):
         )
 
 
-async def upload_ingesting_blob(blob_path: str, container_name=None, connection_string=None):
+def upload_ingesting_blob(blob_path: str, container_name=None, connection_string=None):
     """
 
     @param blob_path:
@@ -176,11 +176,15 @@ async def upload_ingesting_blob(blob_path: str, container_name=None, connection_
     ingesting_blob_path = f"{blob_path}.ingesting"
     try:
         # Upload the ingesting file to the blob
-        async with ABlobServiceClient.from_connection_string(connection_string) as blob_service_client:
-            async with blob_service_client.get_blob_client(
-                    container=container_name, blob=ingesting_blob_path
-            ) as blob_client:
-                await blob_client.upload_blob(b"ingesting", overwrite=True)
+        with BlobServiceClient.from_connection_string(connection_string) as blob_service_client:
+                with blob_service_client.get_blob_client(container=container_name, blob=ingesting_blob_path) as blob_client:
+                    blob_client.upload_blob("", overwrite=True)
+
+        # async with ABlobServiceClient.from_connection_string(connection_string) as blob_service_client:
+        #     async with blob_service_client.get_blob_client(
+        #             container=container_name, blob=ingesting_blob_path
+        #     ) as blob_client:
+        #         await blob_client.upload_blob(b"ingesting", overwrite=True)
     except (ClientRequestError, ResourceNotFoundError) as e:
         logger.error(f"Failed to upload {ingesting_blob_path}: {e}")
 
