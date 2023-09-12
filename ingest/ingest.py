@@ -112,7 +112,7 @@ async def ingest_message():
                                     await upload_timeout_blob(blob_url=blob_url, connection_string=AZ_STORAGE_CONN_STR)
 
                                 # remove message from bus queue
-                                await receiver.complete_message(msg)
+                                # await receiver.complete_message(msg)
                                 logger.debug(f'Handling done tasks')
 
                                 for done_future in done:
