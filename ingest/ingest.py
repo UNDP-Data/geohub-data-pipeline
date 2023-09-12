@@ -9,7 +9,7 @@ from ingest.processing import process_geo_file
 from azure.servicebus.aio import AutoLockRenewer, ServiceBusClient
 from ingest.config import raw_folder, setup_env_vars
 import tempfile
-from ingest.utils import (
+from ingest.azblob import (
     copy_raw2datasets,
     handle_lock,
     chop_blob_url,
@@ -44,8 +44,7 @@ async def ingest_message():
             while True:
                 received_msgs = await receiver.receive_messages(
                     max_message_count=1,
-                    max_wait_time=5
-
+                    max_wait_time=5,
                 )
 
                 if not received_msgs:
@@ -112,12 +111,13 @@ async def ingest_message():
                                     # upload an blob to the /dataset/{datasetname} folder.
                                     await upload_timeout_blob(blob_url=blob_url, connection_string=AZ_STORAGE_CONN_STR)
 
+                    
+                                
                                 logger.debug(f'Handling done tasks')
-
                                 for done_future in done:
                                     try:
                                         await done_future
-                                        # await receiver.complete_message(msg)
+                                        await receiver.complete_message(msg)
                                     except Exception as e:
                                         with StringIO() as m:
                                             print_exc(file=m)
@@ -192,7 +192,7 @@ def sync_ingest(blob_url: str = None, token: str = None, timeout_event: multipro
     blob_path = chop_blob_url(blob_url)
 
     if blob_url.endswith(".pmtiles"):
-        asyncio.run(copy_raw2datasets(raw_blob_path=blob_path))
+        asyncio.run(copy_raw2datasets(raw_blob_path=blob_path, connection_string=AZ_STORAGE_CONN_STR))
     else:
         # vsiaz_path = prepare_vsiaz_path(container_blob_path)
         try:

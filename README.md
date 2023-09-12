@@ -19,13 +19,13 @@ To use this API, you'll need to have:
 
 ## Configuration
 
-To configure the API, you'll need to create an `.env` file in the `deployments/scripts` directory. 
+To configure the API, you'll need to create an `.env` file in the `deployments/scripts` directory.
 
 Here are the configuration options:
 
 - `AZURE_STORAGE_CONNECTION_STRING`
 - `SERVICE_BUS_CONNECTION_STRING`
-- `SERVICE_BUS_QUEUE_NAME`	
+- `SERVICE_BUS_QUEUE_NAME`
 
 ### Usage
 
@@ -51,7 +51,7 @@ To test the app locally, you can use Docker Compose to build and run the app in 
 
         cd geohub-data-pipeline
 
-3. Copy the `.env` file in to the root directory of the repository. This file will contain the environment variables that are used by the app. The following variables are required:
+3. Copy the `.env` file in to the root directory of the repository. Copy `.env.example` to create your `.env`. This file will contain the environment variables that are used by the app. The following variables are required:
 
 - `AZURE_STORAGE_CONNECTION_STRING`
 - `SERVICE_BUS_CONNECTION_STRING`
@@ -59,7 +59,7 @@ To test the app locally, you can use Docker Compose to build and run the app in 
 
 4. Build and run the app using Docker Compose.
 
-        docker-compose up --build
+        docker-compose -f ./dockerfiles/docker-compose.yaml up --build
 
 
     This command will build the app's Docker image and start the app in a Docker container. The `--build` flag ensures that the image is rebuilt whenever there are changes to the app's code.

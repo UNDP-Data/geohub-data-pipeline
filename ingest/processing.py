@@ -15,7 +15,7 @@ from ingest.utils import (
     get_local_cog_path,
     get_azure_blob_path,
 )
-from ingest.azblob import upload_blob, upload_content_to_blob
+from ingest.azblob import upload_blob, upload_content_to_blob, upload_ingesting_blob
 from traceback import print_exc
 
 gdal.UseExceptions()
@@ -217,11 +217,12 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
                 logger.info(f'Created single layer PMtiles file {layer_pmtiles_path}')
                 # upload layer_pmtiles_path to azure
                 if conn_string is not None:
-                    container_name, pmtiles_blob_path = get_azure_blob_path(datafile_url=blob_url,
+                    container_name, pmtiles_blob_path = get_azure_blob_path(blob_url=blob_url,
                                                                             local_path=layer_pmtiles_path)
                     logger.info(f'Uploading {layer_pmtiles_path} to {pmtiles_blob_path}')
                     upload_blob(src_path=layer_pmtiles_path, connection_string=conn_string, container_name=container_name,
                                 dst_blob_path=pmtiles_blob_path, )
+                    upload_ingesting_blob(pmtiles_blob_path, container_name=container_name, connection_string=conn_string)
 
 
 
@@ -238,7 +239,7 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
                     logger.error(f'Failed to convert FlatGeobuf {fgb_layer_path} to PMtiles. {error_message}')
                     # upload error file
                     if conn_string is not None:
-                        container_name, pmtiles_blob_path = get_azure_blob_path(datafile_url=blob_url,
+                        container_name, pmtiles_blob_path = get_azure_blob_path(blob_url=blob_url,
                                                                                 local_path=layer_pmtiles_path)
                         error_pmtiles_blob_path = f'{pmtiles_blob_path}.error'
                         upload_content_to_blob(content=error_message, connection_string=conn_string,
@@ -284,11 +285,12 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
             logger.info(f'Created multilayer PMtiles file {pmtiles_path}')
             # upload layer_pmtiles_path to azure
             if conn_string is not None:
-                container_name, pmtiles_blob_path = get_azure_blob_path(datafile_url=blob_url,
+                container_name, pmtiles_blob_path = get_azure_blob_path(blob_url=blob_url,
                                                                         local_path=pmtiles_path)
                 logger.info(f'Uploading {pmtiles_path} to {pmtiles_blob_path}')
                 upload_blob(src_path=pmtiles_path, connection_string=conn_string, container_name=container_name,
                             dst_blob_path=pmtiles_blob_path)
+                upload_ingesting_blob(pmtiles_blob_path, container_name=container_name, connection_string=conn_string)
 
 
         except subprocess.TimeoutExpired as te:
@@ -304,7 +306,7 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
 
                 # upload error file
                 if conn_string is not None:
-                    container_name, pmtiles_blob_path = get_azure_blob_path(datafile_url=blob_url,
+                    container_name, pmtiles_blob_path = get_azure_blob_path(blob_url=blob_url,
                                                                             local_path=pmtiles_path)
                     error_pmtiles_blob_path = f'{pmtiles_blob_path}.error'
                     upload_content_to_blob(content=error_message, connection_string=conn_string,
@@ -410,6 +412,7 @@ def dataset2cog(blob_url=None, src_ds: gdal.Dataset = None, bands: typing.List[i
                 logger.info(f'Uploading {cog_path} to {cog_blob_path}')
                 upload_blob(src_path=cog_path, connection_string=conn_string, container_name=container_name,
                             dst_blob_path=cog_blob_path, )
+                upload_ingesting_blob(cog_blob_path, container_name=container_name, connection_string=conn_string)
 
     except (RuntimeError, Exception) as re:
         if 'user terminated' in str(re).lower():
@@ -424,7 +427,7 @@ def dataset2cog(blob_url=None, src_ds: gdal.Dataset = None, bands: typing.List[i
                 logger.error(msg)
                 # upload error blob
                 if conn_string is not None:
-                    container_name, cog_blob_path = get_azure_blob_path(datafile_url=blob_url, local_path=cog_path)
+                    container_name, cog_blob_path = get_azure_blob_path(blob_url=blob_url, local_path=cog_path)
                     error_cog_blob_path = f'{cog_blob_path}.error'
                     upload_content_to_blob(content=msg, connection_string=conn_string, container_name=container_name,
                                            dst_blob_path=error_cog_blob_path)

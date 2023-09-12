@@ -1,20 +1,17 @@
-FROM ghcr.io/osgeo/gdal:ubuntu-small-latest AS builder
-
-ENV TZ=Etc/UTC
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+# Build felt/tippecanoe
+# Dockerfile from https://github.com/felt/tippecanoe/blob/main/Dockerfile
+# add "--platform=linux/x86_64" for M1 Mac
+FROM ubuntu:22.04 AS tippecanoe-builder
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends \
-  build-essential git wget zlib1g-dev libsqlite3-dev \
-  && rm -rf /var/lib/apt/lists/*
+  && apt-get -y install build-essential libsqlite3-dev zlib1g-dev git
 
-RUN git clone https://github.com/felt/tippecanoe \
- && cd tippecanoe \
- && make -j \
- && make install \
- && cd ../ \
- && rm -rf tippecanoe
+RUN git clone https://github.com/felt/tippecanoe
+WORKDIR tippecanoe
+RUN make
 
+# Build production docker image
+# add "--platform=linux/amd64" for M1 Mac
 FROM ghcr.io/osgeo/gdal:ubuntu-small-latest
 
 ENV TZ=Etc/UTC
@@ -25,11 +22,13 @@ WORKDIR /usr/src/app
 COPY requirements.txt ./
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
-  libffi-dev python3-pip\
+  libffi-dev python3-pip \
   && rm -rf /var/lib/apt/lists/* \
   && pip3 install --no-cache-dir -r requirements.txt
 
-COPY --from=builder /usr/local/bin/tippecanoe /usr/local/bin/tippecanoe
+# copy tippecanoe to production docker image
+COPY --from=tippecanoe-builder /tippecanoe/tippecanoe* /usr/local/bin/
+COPY --from=tippecanoe-builder /tippecanoe/tile-join /usr/local/bin/
 
 COPY main.py ./ 
 COPY ingest ./ingest
