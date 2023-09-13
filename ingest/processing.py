@@ -165,7 +165,6 @@ def dataset2fgb(fgb_dir: str = None,
                     logger.error(msg)
                     # TODO upload error blob
                     container_name, *rest, blob_name = blob_name.split("/")
-                    print(container_name, rest, blob_name)
                     error_blob_path = f'{"/".join(rest)}/{blob_name}.error'
                     upload_content_to_blob(content=error_message, connection_string=conn_string,
                                            container_name=container_name,
