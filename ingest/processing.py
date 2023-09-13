@@ -13,7 +13,7 @@ import logging
 from ingest.utils import (
     prepare_arch_path,
     get_local_cog_path,
-    get_azure_blob_path,
+    get_azure_blob_path, chop_blob_url,
 )
 from ingest.azblob import upload_blob, upload_content_to_blob, upload_ingesting_blob
 from traceback import print_exc
@@ -98,6 +98,8 @@ def dataset2fgb(fgb_dir: str = None,
                 src_ds: typing.Union[gdal.Dataset, ogr.DataSource] = None,
                 layers: typing.List[str] = None,
                 dst_prj_epsg: int = 4326,
+                conn_string: str = None,
+                blob_url: str = None,
                 timeout_event=None):
     """
     Convert one or more layers from src_ds into FlatGeobuf format in a (temporary) directory featuring dst_prj_epsg
@@ -107,6 +109,8 @@ def dataset2fgb(fgb_dir: str = None,
     @param src_ds: GDAL Dataset  or OGR Datasource instance where the layers will be read from
     @param layers: list of layer name ot be converted
     @param dst_prj_epsg: the  target projection as an EPSG code
+    @param conn_string: the connection string used to connect to the Azure storage account
+    @param blob_url: the url of the blob to be ingested
     @param timeout_event:
     @return:
     """
@@ -160,7 +164,12 @@ def dataset2fgb(fgb_dir: str = None,
                     msg = f'Failed to convert {lname} from {src_path} to FlatGeobuf. \n {error_message}'
                     logger.error(msg)
                     # TODO upload error blob
-
+                    container_name, *rest, blob_name = blob_name.split("/")
+                    print(container_name, rest, blob_name)
+                    error_blob_path = f'{"/".join(rest)}/{blob_name}.error'
+                    upload_content_to_blob(content=error_message, connection_string=conn_string,
+                                           container_name=container_name,
+                                           dst_blob_path=error_blob_path)
     return converted_layers
 
 
@@ -342,7 +351,12 @@ def dataset2pmtiles(blob_url: str = None,
     """
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        fgb_layers = dataset2fgb(fgb_dir=temp_dir, src_ds=src_ds, layers=layers, timeout_event=timeout_event)
+        fgb_layers = dataset2fgb(fgb_dir=temp_dir,
+                                 src_ds=src_ds,
+                                 layers=layers,
+                                 timeout_event=timeout_event,
+                                 conn_string=conn_string,
+                                 blob_url=blob_url)
         if fgb_layers:
             fgb2pmtiles(blob_url=blob_url, fgb_layers=fgb_layers, pmtiles_file_name=pmtiles_file_name,
                         timeout_event=timeout_event, conn_string=conn_string, dst_directory=dst_directory)

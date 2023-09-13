@@ -21,9 +21,9 @@ if __name__ == '__main__':
     #fpath = '/data/Sample.gpkg'
     #fpath = '/data/Percent_electricity_access_2012.tif'
     #fpath = '/data/devel.tif'
-    fpath = '/home/thuha/Desktop/data/geohub_data_pipeline/CP_CDIS_C_PSY.fgb'
+    fpath = '/home/thuha/Desktop/data/geohub_data_pipeline/File_GeoHub_Geodatabase.gdb'
     process_geo_file(
-        blob_url="https://undpgeohub.blob.core.windows.net/userdata/test/CP_CDIS_C_PSY.fgb",
+        blob_url="https://undpgeohub.blob.core.windows.net/userdata/test/File_GeoHub_Geodatabase.gdb",
         src_file_path=fpath,
         conn_string=os.environ.get("CONNECTION_STRING"),
         join_vector_tiles=True
