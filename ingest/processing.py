@@ -164,11 +164,14 @@ def dataset2fgb(fgb_dir: str = None,
                     msg = f'Failed to convert {lname} from {src_path} to FlatGeobuf. \n {error_message}'
                     logger.error(msg)
                     # TODO upload error blob
+                    blob_name = chop_blob_url(blob_url=blob_url)
                     container_name, *rest, blob_name = blob_name.split("/")
                     error_blob_path = f'{"/".join(rest)}/{blob_name}.error'
                     upload_content_to_blob(content=error_message, connection_string=conn_string,
                                            container_name=container_name,
                                            dst_blob_path=error_blob_path)
+
+
     return converted_layers
 
 
