@@ -1,6 +1,5 @@
 import asyncio
 import inspect
-import json
 import logging
 import os
 import time
@@ -9,7 +8,6 @@ import rasterio
 from azure.storage.blob import BlobServiceClient as BlobServiceClientSync
 from azure.storage.blob.aio import BlobServiceClient as BlobServiceClientAsync
 from osgeo import gdal
-from rio_cogeo import cog_info
 from rio_cogeo.cogeo import cog_translate, cog_validate
 from rio_cogeo.profiles import cog_profiles
 

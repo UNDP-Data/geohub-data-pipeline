@@ -3,35 +3,8 @@ from urllib.parse import urlparse
 from ingest.config import (
     datasets_folder,
     raw_folder,
-    OUT_FORMATS,
     GDAL_ARCHIVE_FORMATS
 )
-def is_raster(path: str = None):
-    """
-    Check if a path is  raster/TIFF
-    @param path:
-    @return:
-    """
-    p, file_name = os.path.split(path)
-    fname, ext = os.path.splitext(file_name)
-    rast_formats = [e for e in OUT_FORMATS if 'tif' in e]
-    return os.path.isfile(path) and ext and ext in rast_formats
-
-def is_vector(path: str = None):
-    """
-    Check if a path is vector/PMTiles
-    @param path:
-    @return:
-    """
-    p, file_name = os.path.split(path)
-    fname, ext = os.path.splitext(file_name)
-    vect_formats = [e for e in OUT_FORMATS if 'tif' not in e]
-    return os.path.isfile(path) and ext and ext in vect_formats
-
-def exists_and_isabs(path):
-    f, _ = os.path.split(path)[0]
-    return os.path.exists(f) and os.path.isabs(f)
-
 
 def chop_blob_url(blob_url: str) -> str:
     """

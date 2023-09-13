@@ -11,9 +11,6 @@ if __name__ == '__main__':
     sthandler = logging.StreamHandler()
     sthandler.setFormatter(logging.Formatter('%(asctime)s-%(filename)s:%(funcName)s:%(lineno)d:%(levelname)s:%(message)s',
                                              "%Y-%m-%d %H:%M:%S"))
-
-
-
     logger.handlers.clear()
     logger.addHandler(sthandler)
     logger.name = __name__
@@ -41,7 +38,3 @@ if __name__ == '__main__':
     cancel_event = multiprocessing.Event()
     process_geo_file(src_file_path=args.source_file, dst_directory=args.destination_directory,
                      join_vector_tiles=args.join_vector_tiles)#, timeout_event=cancel_event)
-
-
-
-

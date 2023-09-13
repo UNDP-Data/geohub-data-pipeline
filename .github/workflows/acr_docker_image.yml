@@ -47,6 +47,7 @@ jobs:
         uses: actions-hub/kubectl@master
         env:
           KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
+          SERVICE_BUS_CONNECTION_STRING: ${{ secrets.SERVICE_BUS_CONNECTION_STRING }}
         with:
           args: apply -f deployment/yaml/ingest-environment.yaml
       - name: Delete Secrets
