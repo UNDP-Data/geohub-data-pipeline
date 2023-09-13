@@ -241,6 +241,7 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
 
 
     else:
+        fgb_dir = None
         try:
             assert pmtiles_file_name != '', f'Invalid PMtiles path {pmtiles_file_name}'
             fgb_sources = list()
@@ -301,6 +302,7 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
                     container_name, pmtiles_blob_path = get_azure_blob_path(blob_url=blob_url,
                                                                             local_path=pmtiles_path)
                     error_pmtiles_blob_path = f'{pmtiles_blob_path}.error'
+
                     upload_content_to_blob(content=error_message, connection_string=conn_string,
                                            container_name=container_name,
                                            dst_blob_path=error_pmtiles_blob_path)
