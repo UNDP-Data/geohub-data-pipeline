@@ -29,6 +29,7 @@ for varname, varval in config.items():
     logger.debug(f'setting {varname}={varval}')
     gdal.SetConfigOption(str(varname), str(varval))
 
+
 def should_reproject(src_srs: osr.SpatialReference = None, dst_srs: osr.SpatialReference = None):
     """
     Decides if two projections are equal
@@ -164,7 +165,7 @@ def dataset2fgb(fgb_dir: str = None,
 
 
 def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles_file_name: str = None,
-                timeout_event=multiprocessing.Event, conn_string: str = None, dst_directory:str=None):
+                timeout_event=multiprocessing.Event, conn_string: str = None, dst_directory: str = None):
     """
     Converts all FlatGeobuf files from fgb_layers dict into PMtile format and uploads the result to Azure
     blob. Supports cancellation through event arg
@@ -212,9 +213,11 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
                     container_name, pmtiles_blob_path = get_azure_blob_path(blob_url=blob_url,
                                                                             local_path=layer_pmtiles_path)
                     logger.info(f'Uploading {layer_pmtiles_path} to {pmtiles_blob_path}')
-                    upload_blob(src_path=layer_pmtiles_path, connection_string=conn_string, container_name=container_name,
+                    upload_blob(src_path=layer_pmtiles_path, connection_string=conn_string,
+                                container_name=container_name,
                                 dst_blob_path=pmtiles_blob_path, )
-                    upload_ingesting_blob(pmtiles_blob_path, container_name=container_name, connection_string=conn_string)
+                    upload_ingesting_blob(pmtiles_blob_path, container_name=container_name,
+                                          connection_string=conn_string)
 
 
 
@@ -314,7 +317,7 @@ def dataset2pmtiles(blob_url: str = None,
                     conn_string: str = None,
                     pmtiles_file_name: typing.Optional[str] = None,
                     timeout_event: multiprocessing.Event = None,
-                    dst_directory:str = None):
+                    dst_directory: str = None):
     """
     Converts the layer/s contained in src_ds GDAL dataset  to PMTiles and uploads them to Azure
 
@@ -365,7 +368,6 @@ def dataset2cog(blob_url=None, src_ds: gdal.Dataset = None, bands: typing.List[i
     """
     src_path = os.path.abspath(src_ds.GetDescription())
 
-
     try:
         with tempfile.TemporaryDirectory() as temp_dir:
 
@@ -399,9 +401,8 @@ def dataset2cog(blob_url=None, src_ds: gdal.Dataset = None, bands: typing.List[i
                 sep = '\n'
                 raise Exception(f'Invalid COG {cog_path}. Errors are {f"{sep}".join(errors)}')
             logger.info(f'Created COG {cog_path} from {src_path}')
-            #upload to azure
+            # upload to azure
             if conn_string is not None:
-
                 container_name, cog_blob_path = get_azure_blob_path(blob_url=blob_url, local_path=cog_path)
                 logger.info(f'Uploading {cog_path} to {cog_blob_path}')
                 upload_blob(src_path=cog_path, connection_string=conn_string, container_name=container_name,
@@ -474,7 +475,8 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
                     for layer_name in layer_names:
                         logger.info(f'Ingesting vector layer "{layer_name}"')
                         dataset2pmtiles(blob_url=blob_url, src_ds=vdataset, layers=[layer_name],
-                                        timeout_event=timeout_event, conn_string=conn_string, dst_directory=dst_directory)
+                                        timeout_event=timeout_event, conn_string=conn_string,
+                                        dst_directory=dst_directory)
                 else:
                     logger.info(f'Ingesting all vector layers into one multilayer PMtiles file')
                     fname, ext = os.path.splitext(file_name)
