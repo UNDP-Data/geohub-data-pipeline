@@ -1,5 +1,3 @@
-import os
-
 from osgeo import gdal
 from ingest.config import setup_env_vars
 setup_env_vars()

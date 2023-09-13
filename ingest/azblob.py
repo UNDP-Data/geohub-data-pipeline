@@ -48,61 +48,6 @@ async def upload_timeout_blob(blob_url: str, connection_string=None, ):
     except (ClientRequestError, ResourceNotFoundError) as e:
         logger.error(f"Failed to upload {timeout_blob_path}: {e}")
 
-
-async def upload_layer_status_blob(datafile_url: str, layer_name: str = None, connection_string=None, ):
-    """
-
-    @param blob_path:
-    @param container_name:
-    @param connection_string:
-    @return:
-    """
-    datafile_blob_path = chop_blob_url(datafile_url)
-    datasets_blob_path = get_dst_blob_path(blob_path=datafile_blob_path)
-    container_name, *rest, blob_name = datasets_blob_path.split("/")
-    timeout_blob_path = os.path.join(*rest, f'{blob_name}.timeout')
-
-    try:
-        # create the blob
-        async with ABlobServiceClient.from_connection_string(connection_string) as blob_service_client:
-            async with blob_service_client.get_blob_client(
-                    container=container_name, blob=timeout_blob_path
-            ) as blob_client:
-                await blob_client.upload_blob(b"timeout", overwrite=True)
-    except (ClientRequestError, ResourceNotFoundError) as e:
-        logger.error(f"Failed to upload {timeout_blob_path}: {e}")
-
-
-#
-# async def gdal_open_async(filename):
-#     logger.info(f"Opening {filename} with GDAL")
-#     #gdal.SetConfigOption("AZURE_STORAGE_CONNECTION_STRING", connection_string)
-#     dataset = gdal.OpenEx(filename, gdal.GA_ReadOnly)
-#
-#     #dataset = await asyncio.to_thread(gdal.OpenEx, filename, gdal.GA_ReadOnly)
-#     if dataset is None:
-#         logger.error(f"{filename} does not contain GIS data")
-#         await upload_error_blob(filename, f"{filename} does not contain GIS data")
-#
-#
-#     nrasters, nvectors = dataset.RasterCount, dataset.GetLayerCount()
-#     dataset = None
-#
-#     return nrasters, nvectors
-#
-# def gdal_open_sync(filename):
-#
-#     logger.info(f"Opening {filename}")
-#     dataset = gdal.OpenEx(filename, gdal.GA_ReadOnly)
-#
-#     if dataset is None:
-#         logger.error(f"{filename} does not contain GIS data")
-#         asyncio.run(upload_error_blob(filename, f"{filename} does not contain GIS data"))
-#     nrasters, nvectors = dataset.RasterCount, dataset.GetLayerCount()
-#
-#     dataset = None
-#     return nrasters, nvectors
-
 async def copy_raw2datasets(raw_blob_path: str, connection_string=None):
     """
     Copy raw_blob to the datasets directory
@@ -165,7 +110,7 @@ async def copy_raw2datasets(raw_blob_path: str, connection_string=None):
 
 def upload_ingesting_blob(blob_path: str, container_name=None, connection_string=None):
     """
-
+    Upload the ingesting file to the blob
     @param blob_path:
     @param container_name:
     @param connection_string:
@@ -175,16 +120,9 @@ def upload_ingesting_blob(blob_path: str, container_name=None, connection_string
         blob_path = blob_path.split(f"/{container_name}/")[-1]
     ingesting_blob_path = f"{blob_path}.ingesting"
     try:
-        # Upload the ingesting file to the blob
         with BlobServiceClient.from_connection_string(connection_string) as blob_service_client:
                 with blob_service_client.get_blob_client(container=container_name, blob=ingesting_blob_path) as blob_client:
                     blob_client.upload_blob("", overwrite=True)
-
-        # async with ABlobServiceClient.from_connection_string(connection_string) as blob_service_client:
-        #     async with blob_service_client.get_blob_client(
-        #             container=container_name, blob=ingesting_blob_path
-        #     ) as blob_client:
-        #         await blob_client.upload_blob(b"ingesting", overwrite=True)
     except (ClientRequestError, ResourceNotFoundError) as e:
         logger.error(f"Failed to upload {ingesting_blob_path}: {e}")
 

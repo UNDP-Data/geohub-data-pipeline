@@ -25,17 +25,9 @@ logger = logging.getLogger(__name__)
 
 config, output_profile = gdal_configs()
 
-
-class IngestError(Exception):
-    pass
-
-
 for varname, varval in config.items():
     logger.debug(f'setting {varname}={varval}')
     gdal.SetConfigOption(str(varname), str(varval))
-
-
-
 
 def should_reproject(src_srs: osr.SpatialReference = None, dst_srs: osr.SpatialReference = None):
     """
