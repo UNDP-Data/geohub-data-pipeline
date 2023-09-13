@@ -1,4 +1,2 @@
-kubectl delete -f ../yaml/ingest-ingress.yaml
-kubectl delete -f ../yaml/ingest-service.yaml
-kubectl delete -f ../yaml/ingest-deployment.yaml
-kubectl delete -f ../yaml/ingest-namespace.yaml
+kubectl delete -f ../yaml/ingest-environment.yaml
+kubectl delete secret ingest-secrets --ignore-not-found -n data

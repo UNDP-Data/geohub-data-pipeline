@@ -43,5 +43,25 @@ spec:
       port: 80
       targetPort: 8000
   type: ClusterIP
-
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: azure-servicebus-queue-scaledobject
+  namespace: data
+spec:
+  scaleTargetRef:
+    kind: Deployment
+    name: ingest
+  cooldownPeriod: 60 
+  minReplicaCount:  1
+  maxReplicaCount:  3 
+  triggers:
+  - type: azure-servicebus
+    metadata:
+      queueName: data-upload
+      namespace: undpgeohub
+      messageCount: "5" # default 5
+      activationMessageCount: "1"
+      connectionFromEnv: SERVICE_BUS_CONNECTION_STRING
 
