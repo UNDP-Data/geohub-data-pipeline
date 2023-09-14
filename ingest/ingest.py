@@ -6,6 +6,7 @@ import os
 from io import StringIO
 from traceback import print_exc
 from ingest.processing import process_geo_file
+from ingest.azlog import AzureBlobStorageHandler
 from azure.servicebus.aio import AutoLockRenewer, ServiceBusClient
 from ingest.config import raw_folder, setup_env_vars
 import tempfile
@@ -87,7 +88,11 @@ async def ingest_message():
 
                                 
                                 """
-
+                                #create and attach  azure log handler to the root logger
+                                root_logger = logging.getLogger()
+                                az_handler = AzureBlobStorageHandler(connection_string=AZ_STORAGE_CONN_STR, blob_url=blob_url,
+                                                                     log_level=root_logger.level)
+                                root_logger.addHandler(az_handler)
                                 timeout_event = multiprocessing.Event()
                                 ingest_task = asyncio.ensure_future(
                                     asyncio.to_thread(sync_ingest, blob_url=blob_url, timeout_event=timeout_event,
@@ -118,6 +123,7 @@ async def ingest_message():
                                     try:
                                         await done_future
                                         await receiver.complete_message(msg)
+
                                     except Exception as e:
                                         with StringIO() as m:
                                             print_exc(file=m)
@@ -135,7 +141,7 @@ async def ingest_message():
                                             f'Pending future {pending_future.get_name()} has been cancelled')
                                     except Exception as e:
                                         raise
-
+                                root_logger.removeHandler(az_handler)
                             else:
                                 logger.info(
                                     f"Skipping {blob_url} because it is not in the {raw_folder} folder"
@@ -154,6 +160,8 @@ async def ingest_message():
                         #     msg, reason="message parse error", error_description=em
                         # )
                         continue
+
+
 
 
 def sync_ingest(blob_url: str = None, token: str = None, timeout_event: multiprocessing.Event = None,
