@@ -3,22 +3,28 @@ from azure.storage.blob import ContentSettings, ContainerClient
 from urllib.parse import urlparse
 import os
 class AzureBlobStorageHandler(logging.Handler):
-    def __init__(self, container_client, blob_url=None):
+    def __init__(self, connection_string=None, blob_url=None, log_level=None):
         super().__init__()
 
         self.blob_url = blob_url
-        self.container_client = container_client
+        self.connection_string = connection_string
+        self.level = log_level
+        self.container_client = None
         self.blob_client = None
         self.blob_name = None
         self.createBlob()
+        formatter = logging.Formatter('%(asctime)s-%(filename)s:%(funcName)s:%(lineno)d:%(levelname)s:%(message)s\n',
+                                      "%Y-%m-%d %H:%M:%S")
+        self.setFormatter(formatter)
 
 
     def createBlob(self):
         # Create a blob client for the log record
-        path = urlparse(blob_url).path[1:]
+        path = urlparse(self.blob_url).path[1:]
         container_name, *rest, blob_name = path.split(os.path.sep)
         name, ext = os.path.splitext(blob_name)
         self.blob_name = os.path.join(*rest,blob_name.replace(ext, '.log'))
+        self.container_client = ContainerClient.from_connection_string(conn_str=self.connection_string, container_name=container_name)
         self.blob_client = self.container_client.get_blob_client(self.blob_name)
         content_settings = ContentSettings(content_type="text/plain")
         self.blob_client.create_append_blob(content_settings)
@@ -30,6 +36,8 @@ class AzureBlobStorageHandler(logging.Handler):
 
         self.blob_client.append_block(log_data)
 
+    def __del__(self):
+        self.container_client.close()
 
 if __name__ == '__main__':
 
@@ -53,7 +61,7 @@ if __name__ == '__main__':
     handler.setFormatter(formatter)
 
     logger.addHandler(handler)
-    logger.setLevel(level)
+
     logger.info(f'Welcome to AZURE logging')
 
 
