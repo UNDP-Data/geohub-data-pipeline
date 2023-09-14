@@ -138,7 +138,7 @@ def dataset2fgb(fgb_dir: str = None,
             reproject = should_reproject(src_srs=layer_srs, dst_srs=dst_srs)
             if reproject:
                 fgb_opts.append(f'-t_srs EPSG:{dst_prj_epsg}')
-            fgb_opts.append(lname)
+            fgb_opts.append(f'"{lname}"')
             logger.debug(f'Converting {lname} from {src_path} into {dst_path}')
 
             fgb_ds = gdal.VectorTranslate(destNameOrDestDS=dst_path,
@@ -255,7 +255,6 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
 
 
     else:
-        fgb_dir = None
         try:
             assert pmtiles_file_name != '', f'Invalid PMtiles path {pmtiles_file_name}'
             fgb_sources = list()
@@ -264,8 +263,8 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
             else:
                 for layer_name, fgb_layer_path in fgb_layers.items():
                     fgb_sources.append(f'--named-layer={layer_name}:{fgb_layer_path}')
-                    if fgb_dir is None:
-                        fgb_dir, _ = os.path.split(fgb_layer_path)
+                    fgb_dir, _ = os.path.split(fgb_layer_path)
+                    break
             pmtiles_path = os.path.join(fgb_dir, f'{pmtiles_file_name}.pmtiles')
             tippecanoe_cmd = [
                 "tippecanoe",
