@@ -1,7 +1,6 @@
 import logging
-import datetime
 from azure.storage.blob import ContentSettings, ContainerClient
-from ingest.utils import chop_blob_url
+from urllib.parse import urlparse
 import os
 class AzureBlobStorageHandler(logging.Handler):
     def __init__(self, container_client, blob_url=None):
@@ -16,7 +15,7 @@ class AzureBlobStorageHandler(logging.Handler):
 
     def createBlob(self):
         # Create a blob client for the log record
-        path = chop_blob_url(blob_url=self.blob_url)
+        path = urlparse(blob_url).path[1:]
         container_name, *rest, blob_name = path.split(os.path.sep)
         name, ext = os.path.splitext(blob_name)
         self.blob_name = os.path.join(*rest,blob_name.replace(ext, '.log'))
@@ -28,17 +27,20 @@ class AzureBlobStorageHandler(logging.Handler):
     def emit(self, record):
         # Write the log record to the blob
         log_data = self.format(record).encode("utf-8")
+
         self.blob_client.append_block(log_data)
 
 
 if __name__ == '__main__':
+
+    logging.basicConfig()
+    blob_url = 'https://undpgeohub.blob.core.windows.net/userdata/test/Sample.gpkg'
+    logger = logging.getLogger(__file__)
     # silence azure logger
     azlogger = logging.getLogger("azure.core.pipeline.policies.http_logging_policy")
     azlogger.setLevel(logging.WARNING)
     sblogger = logging.getLogger("uamqp")
     sblogger.setLevel(logging.WARNING)
-    blob_url = 'https://undpgeohub.blob.core.windows.net/userdata/test/Sample.gpkg'
-    logger = logging.getLogger()
     container_client = ContainerClient.from_connection_string(os.environ.get('CONNECTION_STRING'), container_name='userdata')
     # Add the Azure Blob Storage handler to the logger
     level = logging.INFO
@@ -46,9 +48,8 @@ if __name__ == '__main__':
     handler = AzureBlobStorageHandler(container_client, blob_url=blob_url)
     handler.setLevel(level)
 
-    frmt = "%(asctime)s | %(levelname)s | in %(name)s | %(message)s\n"
-    time_format_str = "%Y-%m-%dT%H:%M:%S"
-    formatter = logging.Formatter(frmt, time_format_str)
+    formatter = logging.Formatter('%(asctime)s-%(filename)s:%(funcName)s:%(lineno)d:%(levelname)s:%(message)s',
+                      "%Y-%m-%d %H:%M:%S")
     handler.setFormatter(formatter)
 
     logger.addHandler(handler)
