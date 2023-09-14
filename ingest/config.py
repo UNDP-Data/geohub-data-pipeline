@@ -12,6 +12,8 @@ logging.basicConfig(
 raw_folder = "raw"
 datasets_folder = "datasets"
 
+attribution = "United Nations Development Programme (UNDP)"
+
 # account_url = os.getenv("ACCOUNT_URL")
 # assert account_url is not None, f"ACCOUNT_URL env var is not set"
 # container_name = os.getenv("CONTAINER_NAME")

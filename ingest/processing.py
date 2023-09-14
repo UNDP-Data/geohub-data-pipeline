@@ -6,7 +6,7 @@ from osgeo import gdal, osr, ogr
 from pmtiles.reader import Reader, MmapSource
 import typing
 import tempfile
-from ingest.config import gdal_configs
+from ingest.config import gdal_configs, attribution
 from rio_cogeo import cog_validate
 
 import logging
@@ -198,6 +198,9 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
                     "--no-tile-size-limit",
                     "--no-tile-compression",
                     "--force",
+                    f'--name={layer_name}',
+                    f'--description={layer_name}',
+                    f'--attribution={attribution}',
                     fgb_layer_path,
                 ]
                 tippecanoe(tippecanoe_cmd=tippecanoe_cmd, timeout_event=timeout_event)
@@ -264,7 +267,9 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
                 "--no-tile-size-limit",
                 "--no-tile-compression",
                 "--force",
-
+                f'--name={pmtiles_file_name}',
+                f'--description={pmtiles_file_name}',
+                f'--attribution={attribution}',
             ]
 
             tippecanoe_cmd += fgb_sources
