@@ -1,4 +1,6 @@
 .vscode
+.idea
+Pipfile
 .env
 *sample.dat
 test.tif

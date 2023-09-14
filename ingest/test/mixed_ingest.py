@@ -1,3 +1,5 @@
+import os
+
 from ingest.processing import process_geo_file
 import logging
 
@@ -14,9 +16,15 @@ if __name__ == '__main__':
     logger.handlers.clear()
     logger.addHandler(sthandler)
     logger.name = __name__
-    fpath = '/data/File_GeoHub_Geodatabase.gdb'
+    # fpath = '/data/File_GeoHub_Geodatabase.gdb'
     #fpath = '/vsizip/data/featuredataset.gdb.zip'
     #fpath = '/data/Sample.gpkg'
     #fpath = '/data/Percent_electricity_access_2012.tif'
     #fpath = '/data/devel.tif'
-    process_geo_file(vsiaz_blob_path=fpath, join_vector_tiles=True)
+    fpath = '/home/thuha/Desktop/data/geohub_data_pipeline/File_GeoHub_Geodatabase.gdb'
+    process_geo_file(
+        blob_url="https://undpgeohub.blob.core.windows.net/userdata/test/File_GeoHub_Geodatabase.gdb",
+        src_file_path=fpath,
+        conn_string=os.environ.get("CONNECTION_STRING"),
+        join_vector_tiles=True
+    )
