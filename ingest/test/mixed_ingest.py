@@ -1,5 +1,6 @@
 import os
 
+from ingest.ingest import sync_ingest
 from ingest.processing import process_geo_file
 import logging
 
@@ -21,10 +22,14 @@ if __name__ == '__main__':
     #fpath = '/data/Sample.gpkg'
     #fpath = '/data/Percent_electricity_access_2012.tif'
     #fpath = '/data/devel.tif'
-    fpath = '/home/thuha/Desktop/data/geohub_data_pipeline/File_GeoHub_Geodatabase.gdb'
+    fpath = '/home/thuha/Pictures/Screenshots/kenya.png'
     process_geo_file(
-        blob_url="https://undpgeohub.blob.core.windows.net/userdata/test/File_GeoHub_Geodatabase.gdb",
+        blob_url="https://undpgeohub.blob.core.windows.net/userdata/4c9b6906ff63494418aef1efd028be44/raw/kenya.png",
         src_file_path=fpath,
-        conn_string=os.environ.get("CONNECTION_STRING"),
+        conn_string=os.environ.get("AZURE_STORAGE_CONNECTION_STRING"),
         join_vector_tiles=True
     )
+    # sync_ingest(
+    #     blob_url="https://undpgeohub.blob.core.windows.net/userdata/test/USA_POPDEN_2020_COG_1km_reclass.tif",
+    #     conn_string=os.environ.get("AZURE_STORAGE_CONNECTION_STRING"),
+    # )

@@ -255,7 +255,7 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
 
 
     else:
-        fgb_dir = None
+        # fgb_dir = None
         try:
             assert pmtiles_file_name != '', f'Invalid PMtiles path {pmtiles_file_name}'
             fgb_sources = list()
@@ -264,8 +264,8 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
             else:
                 for layer_name, fgb_layer_path in fgb_layers.items():
                     fgb_sources.append(f'--named-layer={layer_name}:{fgb_layer_path}')
-                    if fgb_dir is None:
-                        fgb_dir, _ = os.path.split(fgb_layer_path)
+                    # if fgb_dir is None:
+                    fgb_dir, _ = os.path.split(fgb_layer_path)
             pmtiles_path = os.path.join(fgb_dir, f'{pmtiles_file_name}.pmtiles')
             tippecanoe_cmd = [
                 "tippecanoe",
@@ -279,7 +279,6 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
                 "--no-tile-size-limit",
                 "--no-tile-compression",
                 "--force",
-
             ]
 
             tippecanoe_cmd += fgb_sources
@@ -315,11 +314,13 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
                 if conn_string is not None:
                     container_name, pmtiles_blob_path = get_azure_blob_path(blob_url=blob_url,
                                                                             local_path=pmtiles_path)
-                    error_pmtiles_blob_path = f'{pmtiles_blob_path}.error'
 
+                    blob_name = chop_blob_url(blob_url=blob_url)
+                    container_name, *rest, blob_name = blob_name.split("/")
+                    error_blob_path = f'{"/".join(rest)}/{blob_name}.error'
                     upload_content_to_blob(content=error_message, connection_string=conn_string,
                                            container_name=container_name,
-                                           dst_blob_path=error_pmtiles_blob_path)
+                                           dst_blob_path=error_blob_path)
 
 
 def dataset2pmtiles(blob_url: str = None,
@@ -438,10 +439,12 @@ def dataset2cog(blob_url=None, src_ds: gdal.Dataset = None, bands: typing.List[i
                 logger.error(msg)
                 # upload error blob
                 if conn_string is not None:
-                    container_name, cog_blob_path = get_azure_blob_path(blob_url=blob_url, local_path=cog_path)
-                    error_cog_blob_path = f'{cog_blob_path}.error'
-                    upload_content_to_blob(content=msg, connection_string=conn_string, container_name=container_name,
-                                           dst_blob_path=error_cog_blob_path)
+                    blob_name = chop_blob_url(blob_url=blob_url)
+                    container_name, *rest, blob_name = blob_name.split("/")
+                    error_blob_path = f'{"/".join(rest)}/{blob_name}.error'
+                    upload_content_to_blob(content=msg, connection_string=conn_string,
+                                           container_name=container_name,
+                                           dst_blob_path=error_blob_path)
 
 
 def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles: bool = False,
