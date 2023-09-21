@@ -22,8 +22,7 @@ class AzureBlobStorageHandler(logging.Handler):
         # Create a blob client for the log record
         path = urlparse(self.blob_url).path[1:]
         container_name, *rest, blob_name = path.split(os.path.sep)
-        name, ext = os.path.splitext(blob_name)
-        self.blob_name = os.path.join(*rest,blob_name.replace(ext, '.log'))
+        self.blob_name = os.path.join(*rest, f"{blob_name}.log")
         self.container_client = ContainerClient.from_connection_string(conn_str=self.connection_string, container_name=container_name)
         self.blob_client = self.container_client.get_blob_client(self.blob_name)
         content_settings = ContentSettings(content_type="text/plain")
