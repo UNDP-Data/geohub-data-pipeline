@@ -1,6 +1,6 @@
 import logging
 import os
-
+from azure.messaging.webpubsubservice import WebPubSubServiceClient
 from rio_cogeo.profiles import cog_profiles
 
 logging.basicConfig(
@@ -28,7 +28,7 @@ attribution = "United Nations Development Programme (UNDP)"
 # os.environ["AZURE_STORAGE_ACCESS_KEY"] = azure_storage_access_key
 # os.environ["AZURE_STORAGE_ACCOUNT"] = account_name
 # os.environ["AZURE_STORAGE_CONNECTION_STRING"] = connection_string
-
+AZURE_WEBPUBSUB_GROUP_NAME = 'datapipeline'
 GDAL_ARCHIVE_FORMATS = {
     ".zip": "vsizip",
     ".gz": "vsigzip",
@@ -109,6 +109,23 @@ def gdal_configs(config={}, profile="zstd"):
     ] = "YES"  # necessary to write files to AZ directkly using rio
 
     return config, output_profile
+
+
+def get_azurewebsubpub_client_token(group_name=AZURE_WEBPUBSUB_GROUP_NAME, hub='Hub', minutes_to_expire=60):
+    AZURE_WEBPUBSUB_CONNECTION_STRING = os.environ.get('AZURE_WEBPUBSUB_CONNECTION_STRING')
+    assert AZURE_WEBPUBSUB_CONNECTION_STRING not in ('', None), f'AZURE_WEBPUBSUB_CONNECTION_STRING env var is not valid'
+    # create a websubpub service client
+    with WebPubSubServiceClient.from_connection_string(
+            connection_string=AZURE_WEBPUBSUB_CONNECTION_STRING,
+            hub=hub
+        ) as service_client:
+        token = service_client.get_client_access_token(
+            user_id='geohub-data-pipeline',
+            roles=[f"webpubsub.joinLeaveGroup.{group_name}",
+                   f"webpubsub.sendToGroup.{group_name}"],
+            minutes_to_expire=minutes_to_expire
+        )
+        return token
 
 
 def setup_env_vars():

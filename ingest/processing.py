@@ -6,9 +6,10 @@ from osgeo import gdal, osr, ogr
 from pmtiles.reader import Reader, MmapSource
 import typing
 import tempfile
-from ingest.config import gdal_configs, attribution
+from ingest.config import gdal_configs, attribution, AZURE_WEBPUBSUB_GROUP_NAME
 from rio_cogeo import cog_validate
-
+from azure.messaging.webpubsubclient import WebPubSubClient
+from azure.messaging.webpubsubclient.models import WebPubSubDataType
 import logging
 from ingest.utils import (
     prepare_arch_path,
@@ -455,7 +456,7 @@ def dataset2cog(blob_url=None, src_ds: gdal.Dataset = None, bands: typing.List[i
 
 def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles: bool = False,
                      conn_string: str = None, timeout_event: multiprocessing.Event = None,
-                     dst_directory=None
+                     dst_directory=None, websocket_client = None
                      ):
     """
     Converts the vector layers from the input src_file_path to PMtiles and the raster bands to
@@ -475,6 +476,9 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
     if is_cli:
         assert os.path.isdir(dst_directory), f'dst_directory={dst_directory} needs to be a directory'
         assert os.path.exists(dst_directory), f'dst_directory={dst_directory} des not exist'
+    else:
+        blob_path = chop_blob_url(blob_url)
+        container_name, user, *rest = blob_path.split("/")
     try:
 
         # handle vectors first
@@ -491,23 +495,43 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
             logger.info(f'Opened {src_file_path} with {vdataset.GetDriver().ShortName} vector driver')
             nvector_layers = vdataset.GetLayerCount()
             if nvector_layers > 0:
-
+                layer_progress_chunk = 70 // nvector_layers
+                rem = 70 % nvector_layers
+                progress = list(range(layer_progress_chunk - 1, 70, ))
+                if rem:
+                    progress += [progress[-1] + rem]
                 logger.info(f'Found {nvector_layers} vector layers')
                 _, file_name = os.path.split(vdataset.GetDescription())
                 layer_names = [vdataset.GetLayerByIndex(i).GetName() for i in range(nvector_layers)]
                 if not join_vector_tiles:
 
-                    for layer_name in layer_names:
+                    for li, layer_name in enumerate(layer_names):
                         logger.info(f'Ingesting vector layer "{layer_name}"')
                         dataset2pmtiles(blob_url=blob_url, src_ds=vdataset, layers=[layer_name],
                                         timeout_event=timeout_event, conn_string=conn_string,
                                         dst_directory=dst_directory)
+                        if not is_cli:
+                            payload = dict(user=user, url=blob_url, stage='processing',
+                                           progress=progress[li])
+                            with websocket_client:
+                                websocket_client.join_group(AZURE_WEBPUBSUB_GROUP_NAME)
+                                websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
+                                                               content=json.dumps(payload),
+                                                               data_type=WebPubSubDataType.JSON)
                 else:
                     logger.info(f'Ingesting all vector layers into one multilayer PMtiles file')
                     fname, ext = os.path.splitext(file_name)
                     dataset2pmtiles(blob_url=blob_url, src_ds=vdataset, layers=layer_names,
                                     pmtiles_file_name=fname, timeout_event=timeout_event, conn_string=conn_string,
                                     dst_directory=dst_directory)
+                    if not is_cli:
+                        payload = dict(user=user, url=blob_url, stage='processing',
+                                       progress=100)
+                        with websocket_client:
+                            websocket_client.join_group(AZURE_WEBPUBSUB_GROUP_NAME)
+                            websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
+                                                           content=json.dumps(payload),
+                                                           data_type=WebPubSubDataType.JSON)
             else:
                 logger.info(f'{src_file_path} contains {nvector_layers} vector layers')
             del vdataset
@@ -530,32 +554,52 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
         nraster_bands = rdataset.RasterCount
 
         # Driver.getMetadataItem(gdal.DCAP_SUBTADASETS) is not reliable so it is better to try
+        subdatasets = rdataset.GetSubDatasets()
+        if subdatasets:
+            n_subdatasets = len(subdatasets)
+            subdataset_progress_chunk = 70//n_subdatasets
+            rem = 70%n_subdatasets
+            progress = list(range(subdataset_progress_chunk-1, 70, ))
+            if rem:
+                progress += [progress[-1]+rem]
+            for subdataset_index, sdb in enumerate(subdatasets):
+                subdataset_path, subdataset_descr = sdb
+                subds = gdal.Open(subdataset_path.replace('\"', ''))
+                # logger.info(f'Opening raster subdataset {subdataset_descr} featuring {subds.RasterCount} bands')
+                subds_bands = [b + 1 for b in range(subds.RasterCount)]
+                subds_colorinterp = []
+                if subds_bands:
+                    subds_colorinterp = [subds.GetRasterBand(b).GetColorInterpretation() for b in subds_bands]
+                subds_photometric = subds.GetMetadataItem('PHOTOMETRIC')
+                subds_no_colorinterp_bands = len(subds_colorinterp)
 
-        for sdb in rdataset.GetSubDatasets():
-            subdataset_path, subdataset_descr = sdb
-            subds = gdal.Open(subdataset_path.replace('\"', ''))
-            # logger.info(f'Opening raster subdataset {subdataset_descr} featuring {subds.RasterCount} bands')
-            subds_bands = [b + 1 for b in range(subds.RasterCount)]
-            subds_colorinterp = []
-            if subds_bands:
-                subds_colorinterp = [subds.GetRasterBand(b).GetColorInterpretation() for b in subds_bands]
-            subds_photometric = subds.GetMetadataItem('PHOTOMETRIC')
-            subds_no_colorinterp_bands = len(subds_colorinterp)
-
-            # RGB COGS,more work needs to be done here too look into RGB subdatasets
-            if subds_no_colorinterp_bands >= 3 or subds_photometric is not None:
-                logger.info(f'Ingesting multiband(RGB) subdataset {subdataset_path}')
-                dataset2cog(blob_url=blob_url, src_ds=subds, timeout_event=timeout_event,
-                            conn_string=conn_string, dst_directory=dst_directory)
-            else:
-                for band_no in subds_bands:
-                    logger.info(f'Ingesting band {band_no} from {subdataset_path}')
-                    dataset2cog(blob_url=blob_url, src_ds=subds, bands=[band_no], timeout_event=timeout_event,
+                # RGB COGS,more work needs to be done here too look into RGB subdatasets
+                if subds_no_colorinterp_bands >= 3 or subds_photometric is not None:
+                    logger.info(f'Ingesting multiband(RGB) subdataset {subdataset_path}')
+                    dataset2cog(blob_url=blob_url, src_ds=subds, timeout_event=timeout_event,
                                 conn_string=conn_string, dst_directory=dst_directory)
+                else:
+                    for band_no in subds_bands:
+                        logger.info(f'Ingesting band {band_no} from {subdataset_path}')
+                        dataset2cog(blob_url=blob_url, src_ds=subds, bands=[band_no], timeout_event=timeout_event,
+                                    conn_string=conn_string, dst_directory=dst_directory)
 
-            del subds
+                del subds
+                if not is_cli:
+                    payload = dict(user=user, url=blob_url, stage='processing', progress=progress[subdataset_index])
+                    with websocket_client:
+                        websocket_client.join_group(AZURE_WEBPUBSUB_GROUP_NAME)
+                        websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
+                                                       content=json.dumps(payload),
+                                                       data_type=WebPubSubDataType.JSON)
+
 
         if nraster_bands:  # raster data is located at root
+            band_progress_chunk = 70 // nraster_bands
+            rem = 70 % nraster_bands
+            progress = list(range(band_progress_chunk - 1, 70, ))
+            if rem:
+                progress += [progress[-1] + rem]
             bands = [b + 1 for b in range(nraster_bands)]
             colorinterp = []
             if bands:
@@ -566,12 +610,27 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
                 logger.info(f'Ingesting multiband(RGB) dataset {src_file_path}')
                 dataset2cog(blob_url=blob_url, src_ds=rdataset, timeout_event=timeout_event,
                             conn_string=conn_string, dst_directory=dst_directory)
+                if not is_cli:
+                    payload = dict(user=user, url=blob_url, stage='processing', progress=100)
+                    with websocket_client:
+                        websocket_client.join_group(AZURE_WEBPUBSUB_GROUP_NAME)
+                        websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
+                                                       content=json.dumps(payload),
+                                                       data_type=WebPubSubDataType.JSON)
+
             else:
                 logger.info(f'Found {nraster_bands} rasters')
                 for band_no in bands:
                     logger.info(f'Ingesting band {band_no} from {src_file_path}')
                     dataset2cog(blob_url=blob_url, src_ds=rdataset, bands=[band_no],
                                 timeout_event=timeout_event, conn_string=conn_string, dst_directory=dst_directory)
+                    if not is_cli:
+                        payload = dict(user=user, url=blob_url, stage='processing', progress=progress[band_no-1])
+                        with websocket_client:
+                            websocket_client.join_group(AZURE_WEBPUBSUB_GROUP_NAME)
+                            websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
+                                                           content=json.dumps(payload),
+                                                           data_type=WebPubSubDataType.JSON)
 
         del rdataset
 
