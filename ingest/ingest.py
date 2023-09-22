@@ -17,7 +17,7 @@ from ingest.azblob import (
     download_blob_sync,
     upload_timeout_blob
 )
-
+from azure.messaging.webpubsubclient import WebPubSubClient
 logger = logging.getLogger(__name__)
 
 # silence azure logger
@@ -32,7 +32,7 @@ INGEST_TIMEOUT = 3600  # 1 hours MAX
 CONNECTION_STR = os.environ["SERVICE_BUS_CONNECTION_STRING"]
 QUEUE_NAME = os.environ["SERVICE_BUS_QUEUE_NAME"]
 AZ_STORAGE_CONN_STR = os.environ['AZURE_STORAGE_CONNECTION_STRING']
-
+AZURE_WEBPUBSUB_CLIENT_ACCESS_URL = os.environ.get('AZURE_WEBPUBSUB_CLIENT_ACCESS_URL')
 
 async def ingest_message():
     async with ServiceBusClient.from_connection_string(
