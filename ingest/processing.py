@@ -496,10 +496,7 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
             nvector_layers = vdataset.GetLayerCount()
             if nvector_layers > 0:
                 layer_progress_chunk = 70 // nvector_layers
-                rem = 70 % nvector_layers
-                progress = list(range(layer_progress_chunk - 1, 70, ))
-                if rem:
-                    progress += [progress[-1] + rem]
+                progress = [30 + e if i < nvector_layers else 30 + e + 70 % nvector_layers for i, e in enumerate(range(0, 70, layer_progress_chunk))]
                 logger.info(f'Found {nvector_layers} vector layers')
                 _, file_name = os.path.split(vdataset.GetDescription())
                 layer_names = [vdataset.GetLayerByIndex(i).GetName() for i in range(nvector_layers)]
@@ -557,11 +554,10 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
         subdatasets = rdataset.GetSubDatasets()
         if subdatasets:
             n_subdatasets = len(subdatasets)
-            subdataset_progress_chunk = 70//n_subdatasets
-            rem = 70%n_subdatasets
-            progress = list(range(subdataset_progress_chunk-1, 70, ))
-            if rem:
-                progress += [progress[-1]+rem]
+            subdataset_progress_chunk = 70 // n_subdatasets
+            progress = [30 + e if i < n_subdatasets else 30 + e + 70 % n_subdatasets for i, e in
+                        enumerate(range(0, 70, subdataset_progress_chunk))]
+
             for subdataset_index, sdb in enumerate(subdatasets):
                 subdataset_path, subdataset_descr = sdb
                 subds = gdal.Open(subdataset_path.replace('\"', ''))
@@ -579,6 +575,7 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
                     dataset2cog(blob_url=blob_url, src_ds=subds, timeout_event=timeout_event,
                                 conn_string=conn_string, dst_directory=dst_directory)
                 else:
+
                     for band_no in subds_bands:
                         logger.info(f'Ingesting band {band_no} from {subdataset_path}')
                         dataset2cog(blob_url=blob_url, src_ds=subds, bands=[band_no], timeout_event=timeout_event,
@@ -595,11 +592,7 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
 
 
         if nraster_bands:  # raster data is located at root
-            band_progress_chunk = 70 // nraster_bands
-            rem = 70 % nraster_bands
-            progress = list(range(band_progress_chunk - 1, 70, ))
-            if rem:
-                progress += [progress[-1] + rem]
+
             bands = [b + 1 for b in range(nraster_bands)]
             colorinterp = []
             if bands:
@@ -620,6 +613,9 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
 
             else:
                 logger.info(f'Found {nraster_bands} rasters')
+                band_progress_chunk = 70 // nraster_bands
+                progress = [30 + e if i < nraster_bands else 30 + e + 70 % nraster_bands for i, e in
+                            enumerate(range(0, 70, band_progress_chunk))]
                 for band_no in bands:
                     logger.info(f'Ingesting band {band_no} from {src_file_path}')
                     dataset2cog(blob_url=blob_url, src_ds=rdataset, bands=[band_no],
