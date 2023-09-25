@@ -8,7 +8,7 @@ from traceback import print_exc
 from ingest.processing import process_geo_file
 from ingest.azlog import AzureBlobStorageHandler
 from azure.servicebus.aio import AutoLockRenewer, ServiceBusClient
-from ingest.config import raw_folder, setup_env_vars
+from ingest.config import raw_folder, setup_env_vars, get_azurewebsubpub_client_token, AZURE_WEBPUBSUB_GROUP_NAME
 import tempfile
 from ingest.azblob import (
     copy_raw2datasets,
@@ -17,6 +17,8 @@ from ingest.azblob import (
     download_blob_sync,
     upload_timeout_blob
 )
+from azure.messaging.webpubsubclient import WebPubSubClient
+from azure.messaging.webpubsubclient.models import WebPubSubDataType
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,7 @@ INGEST_TIMEOUT = 3600  # 1 hours MAX
 CONNECTION_STR = os.environ["SERVICE_BUS_CONNECTION_STRING"]
 QUEUE_NAME = os.environ["SERVICE_BUS_QUEUE_NAME"]
 AZ_STORAGE_CONN_STR = os.environ['AZURE_STORAGE_CONNECTION_STRING']
+AZURE_WEBPUBSUB_CONNECTION_STRING = os.environ.get('AZURE_WEBPUBSUB_CONNECTION_STRING')
 
 async def ingest_message():
     async with ServiceBusClient.from_connection_string(
@@ -39,7 +42,7 @@ async def ingest_message():
     ) as servicebus_client:
         async with servicebus_client.get_queue_receiver(
                 queue_name=QUEUE_NAME,
-                #prefetch_count=0,
+                # prefetch_count=0,
         ) as receiver:  # get one message without caching
 
             while True:
@@ -55,8 +58,10 @@ async def ingest_message():
                 for msg in received_msgs:
                     try:
                         msg_str = json.loads(str(msg))
+
                         blob_url, token = msg_str.split(";")
-                        #if not 'Sample' in blob_url: continue
+
+                        # if not 'Sample' in blob_url: continue
                         logger.info(
                             f"Received blob: {blob_url} from queue"
                         )
@@ -88,15 +93,19 @@ async def ingest_message():
 
                                 
                                 """
-                                #create and attach  azure log handler to the root logger
+                                #get  a token valid for
+                                azure_web_pubsub_client_token = get_azurewebsubpub_client_token(minutes_to_expire=INGEST_TIMEOUT//60)
+                                websocket_client = WebPubSubClient(azure_web_pubsub_client_token['url'], )
+                                # create and attach  azure log handler to the root logger
                                 root_logger = logging.getLogger()
-                                az_handler = AzureBlobStorageHandler(connection_string=AZ_STORAGE_CONN_STR, blob_url=blob_url,
+                                az_handler = AzureBlobStorageHandler(connection_string=AZ_STORAGE_CONN_STR,
+                                                                     blob_url=blob_url,
                                                                      log_level=root_logger.level)
                                 root_logger.addHandler(az_handler)
                                 timeout_event = multiprocessing.Event()
                                 ingest_task = asyncio.ensure_future(
                                     asyncio.to_thread(sync_ingest, blob_url=blob_url, timeout_event=timeout_event,
-                                                      conn_string=AZ_STORAGE_CONN_STR)
+                                                      conn_string=AZ_STORAGE_CONN_STR, websocket_client=websocket_client)
                                 )
                                 ingest_task.set_name('ingest')
                                 lock_task = asyncio.ensure_future(
@@ -116,8 +125,6 @@ async def ingest_message():
                                     # upload an blob to the /dataset/{datasetname} folder.
                                     await upload_timeout_blob(blob_url=blob_url, connection_string=AZ_STORAGE_CONN_STR)
 
-                    
-                                
                                 logger.debug(f'Handling done tasks')
                                 for done_future in done:
                                     try:
@@ -162,21 +169,19 @@ async def ingest_message():
                         continue
 
 
-
-
 def sync_ingest(blob_url: str = None, token: str = None, timeout_event: multiprocessing.Event = None,
-                conn_string: str = None):
+                conn_string: str = None, websocket_client=None):
     """
     Ingest a geospatial data file potentially containing multiple raster/vector layers
     into geohub
-    Follows  https://github.com/UNDP-Data/geohub/discussions/545
+    Follows https://github.com/UNDP-Data/geohub/discussions/545
 
     There are some peculiarities about this function:
-        1) downlod_blob_sync  returns errors on timeout(signalled using timeout_event argument
+        1) downlod_blob_sync returns errors on timeout(signalled using timeout_event argument
         2. process geo file uses the timeout_event to cancel GDAL functions as well as the tippecanoe process
         3. thi function is executed in a separate Thread. By the time the error is received the parent async machinery
             will have finished running. This is why it silences the errors as there is no parent receiver.
-            This is by design, because in python is is NOT possible to cleansly STOP a thread except by
+            This is by design, because in python is NOT possible to cleansly STOP a thread except by
             interrupting the functions that run inside the thread which is EXACTLY what is happening
 
     The reason behind running this function in a separate thread are simple. GDAL/geo API's are not async.
@@ -193,29 +198,40 @@ def sync_ingest(blob_url: str = None, token: str = None, timeout_event: multipro
     @param token:
     @param timeout_event: object used to signal a timeout has occurred
     @param conn_string: info to connect to Azure (download/upload)
+    @param websocket_client, instance of webpubsub client to communites over azure webpubsub
     @return: None
     """
     logger.info(f"Starting to ingest {blob_url}")
     # if the file is a pmtiles file, return without ingesting, copy to datasets
     blob_path = chop_blob_url(blob_url)
-
+    container_name, user, *rest = blob_path.split("/")
     if blob_url.endswith(".pmtiles"):
         asyncio.run(copy_raw2datasets(raw_blob_path=blob_path, connection_string=AZ_STORAGE_CONN_STR))
     else:
         # vsiaz_path = prepare_vsiaz_path(container_blob_path)
         try:
-            with tempfile.TemporaryDirectory() as temp_dir:
-                temp_data_file = download_blob_sync(
-                    local_folder=temp_dir,
-                    conn_string=conn_string,
-                    src_blob_path=blob_path,
-                    timeout_event=timeout_event
-                )
-                if not temp_data_file:
-                    raise Exception(f'Undetected exception has occurred while downloading {blob_path}')
-                process_geo_file(blob_url=blob_url,src_file_path=temp_data_file, join_vector_tiles=False, timeout_event=timeout_event,
-                                 conn_string=conn_string)
-                logger.info(f"Finished ingesting {blob_url}")
+
+
+
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    temp_data_file = download_blob_sync(
+                        local_folder=temp_dir,
+                        conn_string=conn_string,
+                        src_blob_path=blob_path,
+                        timeout_event=timeout_event
+                    )
+                    payload = dict(user=user, url=blob_url, stage='downloading', progress=30)
+                    with websocket_client:
+                        websocket_client.join_group(AZURE_WEBPUBSUB_GROUP_NAME)
+                        websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
+                                                   content=json.dumps(payload),
+                                                    data_type=WebPubSubDataType.JSON)
+                    if not temp_data_file:
+                        raise Exception(f'Undetected exception has occurred while downloading {blob_path}')
+                    process_geo_file(blob_url=blob_url, src_file_path=temp_data_file, join_vector_tiles=False,
+                                     timeout_event=timeout_event,
+                                     conn_string=conn_string, websocket_client=websocket_client)
+                    logger.info(f"Finished ingesting {blob_url}")
         except TimeoutError as te:
             logger.debug(te)
         except Exception as ee:

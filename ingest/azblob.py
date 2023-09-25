@@ -21,6 +21,7 @@ from ingest.utils import (
 from aiofile import AIOFile
 
 from ingest.ingest_exceptions import ClientRequestError, ResourceNotFoundError
+from wsockets.client import send_message
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ async def upload_timeout_blob(blob_url: str, connection_string=None, ):
                 await blob_client.upload_blob(b"timeout", overwrite=True)
     except (ClientRequestError, ResourceNotFoundError) as e:
         logger.error(f"Failed to upload {timeout_blob_path}: {e}")
+
 
 async def copy_raw2datasets(raw_blob_path: str, connection_string=None):
     """
@@ -94,14 +96,14 @@ async def copy_raw2datasets(raw_blob_path: str, connection_string=None):
     except (ResourceNotFoundError, ClientRequestError) as e:
         logger.error(f"Failed to copy {raw_blob_path}: {e}")
         await upload_error_blob(
-            blob_path, 
+            blob_path,
             f"Failed to copy {raw_blob_path}: {e}",
             container_name=container_name,
             connection_string=connection_string)
     except asyncio.TimeoutError:
         logger.error(f"Copy operation timed out for {raw_blob_path}")
         await upload_error_blob(
-            blob_path, 
+            blob_path,
             f"Copy operation timed out for {raw_blob_path}",
             container_name=container_name,
             connection_string=connection_string
@@ -121,8 +123,8 @@ def upload_ingesting_blob(blob_path: str, container_name=None, connection_string
     ingesting_blob_path = f"{blob_path}.ingesting"
     try:
         with BlobServiceClient.from_connection_string(connection_string) as blob_service_client:
-                with blob_service_client.get_blob_client(container=container_name, blob=ingesting_blob_path) as blob_client:
-                    blob_client.upload_blob("", overwrite=True)
+            with blob_service_client.get_blob_client(container=container_name, blob=ingesting_blob_path) as blob_client:
+                blob_client.upload_blob("", overwrite=True)
     except (ClientRequestError, ResourceNotFoundError) as e:
         logger.error(f"Failed to upload {ingesting_blob_path}: {e}")
 
@@ -337,9 +339,7 @@ async def download_blob(temp_dir=None, conn_string=None, blob_path=None, event=N
                 await close_container_client(cc=cc, event=event)
                 stream = await cc.download_blob(container_rel_blob_path,
                                                 max_concurrency=8,
-                                                progress_hook=progress,
-
-                                                )
+                                                progress_hook=progress)
                 await stream.readinto(dstf)
 
     end = time.time()
@@ -409,6 +409,9 @@ def download_blob_sync(src_blob_path=None, local_folder=None, conn_string=None,
 
     logtrack = []
 
+    stage = "downloading"
+    # create the message object here
+
     def _progress_(current, total) -> None:
         progress = current / total * 100
         rounded_progress = int(math.floor(progress))
@@ -434,6 +437,7 @@ def download_blob_sync(src_blob_path=None, local_folder=None, conn_string=None,
                 monitor.start()
                 logger.info(f'Downloading {container_rel_blob_path}')
                 stream = cc.download_blob(container_rel_blob_path, max_concurrency=8, progress_hook=_progress_)
+
                 stream.readinto(dstf)
                 # stop monitor thread
                 stop_download.set()
