@@ -94,8 +94,8 @@ async def ingest_message():
                                 
                                 """
                                 #get  a token valid for
-                                azure_web_pubsub_client_token = get_azurewebsubpub_client_token(minutes_to_expire=INGEST_TIMEOUT)
-                                websocket_client = WebPubSubClient(azure_web_pubsub_client_token['url'])
+                                azure_web_pubsub_client_token = get_azurewebsubpub_client_token(minutes_to_expire=INGEST_TIMEOUT//60)
+                                websocket_client = WebPubSubClient(azure_web_pubsub_client_token['url'], )
                                 # create and attach  azure log handler to the root logger
                                 root_logger = logging.getLogger()
                                 az_handler = AzureBlobStorageHandler(connection_string=AZ_STORAGE_CONN_STR,
@@ -230,7 +230,7 @@ def sync_ingest(blob_url: str = None, token: str = None, timeout_event: multipro
                         raise Exception(f'Undetected exception has occurred while downloading {blob_path}')
                     process_geo_file(blob_url=blob_url, src_file_path=temp_data_file, join_vector_tiles=False,
                                      timeout_event=timeout_event,
-                                     conn_string=conn_string)
+                                     conn_string=conn_string, websocket_client=websocket_client)
                     logger.info(f"Finished ingesting {blob_url}")
         except TimeoutError as te:
             logger.debug(te)
