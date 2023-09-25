@@ -36,6 +36,10 @@ QUEUE_NAME = os.environ["SERVICE_BUS_QUEUE_NAME"]
 AZ_STORAGE_CONN_STR = os.environ['AZURE_STORAGE_CONNECTION_STRING']
 AZURE_WEBPUBSUB_CONNECTION_STRING = os.environ.get('AZURE_WEBPUBSUB_CONNECTION_STRING')
 
+def handle_connect(c, group_name):
+    c.join_group(group_name)
+
+
 async def ingest_message():
     async with ServiceBusClient.from_connection_string(
             conn_str=CONNECTION_STR, logging_enable=True
@@ -96,6 +100,7 @@ async def ingest_message():
                                 #get  a token valid for
                                 azure_web_pubsub_client_token = get_azurewebsubpub_client_token(minutes_to_expire=INGEST_TIMEOUT//60)
                                 websocket_client = WebPubSubClient(azure_web_pubsub_client_token['url'], )
+                                websocket_client.on("connected", lambda e: handle_connect(websocket_client, AZURE_WEBPUBSUB_GROUP_NAME))
                                 # create and attach  azure log handler to the root logger
                                 root_logger = logging.getLogger()
                                 az_handler = AzureBlobStorageHandler(connection_string=AZ_STORAGE_CONN_STR,
@@ -222,7 +227,6 @@ def sync_ingest(blob_url: str = None, token: str = None, timeout_event: multipro
                     )
                     payload = dict(user=user, url=blob_url, stage='downloading', progress=30)
                     with websocket_client:
-                        websocket_client.join_group(AZURE_WEBPUBSUB_GROUP_NAME)
                         websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                                    content=json.dumps(payload),
                                                     data_type=WebPubSubDataType.JSON)
