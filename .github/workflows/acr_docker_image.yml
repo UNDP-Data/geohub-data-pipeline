@@ -61,7 +61,8 @@ jobs:
         env:
           KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
         with:
-          args: create secret generic ingest-secrets --from-literal=AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }} --from-literal=SERVICE_BUS_CONNECTION_STRING=${{ secrets.SERVICE_BUS_CONNECTION_STRING }} --from-literal=SERVICE_BUS_QUEUE_NAME=${{ secrets.SERVICE_BUS_QUEUE_NAME }} -n ${{ secrets.DEPLOYMENT_NAMESPACE }} --from-literal=AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_WEBPUBSUB_CONNECTION_STRING }}
+          args: create secret generic ingest-secrets --from-literal=AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }} --from-literal=SERVICE_BUS_CONNECTION_STRING=${{ secrets.SERVICE_BUS_CONNECTION_STRING }} --from-literal=SERVICE_BUS_QUEUE_NAME=${{ secrets.SERVICE_BUS_QUEUE_NAME }} -n ${{ secrets.DEPLOYMENT_NAMESPACE }} --from-literal=AZURE_WEBPUBSUB_CONNECTION_STRING=${{ secrets.AZURE_WEBPUBSUB_CONNECTION_STRING }}
+
       - name: Rollout new image
         uses: actions-hub/kubectl@master
         env:
