@@ -510,8 +510,8 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
                         if not is_cli:
                             payload = dict(user=user, url=blob_url, stage='processing',
                                            progress=progress[li])
-                            with websocket_client:
-                                websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
+                            #with websocket_client:
+                            websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                                                content=json.dumps(payload),
                                                                data_type=WebPubSubDataType.JSON)
                 else:
@@ -523,8 +523,8 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
                     if not is_cli:
                         payload = dict(user=user, url=blob_url, stage='processing',
                                        progress=100)
-                        with websocket_client:
-                            websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
+                        #with websocket_client:
+                        websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                                            content=json.dumps(payload),
                                                            data_type=WebPubSubDataType.JSON)
             else:
@@ -582,8 +582,8 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
                 del subds
                 if not is_cli:
                     payload = dict(user=user, url=blob_url, stage='processing', progress=progress[subdataset_index])
-                    with websocket_client:
-                        websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
+                    #with websocket_client:
+                    websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                                        content=json.dumps(payload),
                                                        data_type=WebPubSubDataType.JSON)
 
@@ -602,8 +602,8 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
                             conn_string=conn_string, dst_directory=dst_directory)
                 if not is_cli:
                     payload = dict(user=user, url=blob_url, stage='processing', progress=100)
-                    with websocket_client:
-                        websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
+                    #with websocket_client:
+                    websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                                        content=json.dumps(payload),
                                                        data_type=WebPubSubDataType.JSON)
 
@@ -618,8 +618,8 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
                                 timeout_event=timeout_event, conn_string=conn_string, dst_directory=dst_directory)
                     if not is_cli:
                         payload = dict(user=user, url=blob_url, stage='processing', progress=progress[band_no-1])
-                        with websocket_client:
-                            websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
+                        #with websocket_client:
+                        websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                                            content=json.dumps(payload),
                                                            data_type=WebPubSubDataType.JSON)
 

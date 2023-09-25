@@ -100,60 +100,61 @@ async def ingest_message():
                                 #get  a token valid for
                                 azure_web_pubsub_client_token = get_azurewebsubpub_client_token(minutes_to_expire=INGEST_TIMEOUT//60)
                                 websocket_client = WebPubSubClient(azure_web_pubsub_client_token['url'], )
-                                websocket_client.on("connected", lambda e: handle_connect(websocket_client, AZURE_WEBPUBSUB_GROUP_NAME))
-                                # create and attach  azure log handler to the root logger
-                                root_logger = logging.getLogger()
-                                az_handler = AzureBlobStorageHandler(connection_string=AZ_STORAGE_CONN_STR,
-                                                                     blob_url=blob_url,
-                                                                     log_level=root_logger.level)
-                                root_logger.addHandler(az_handler)
-                                timeout_event = multiprocessing.Event()
-                                ingest_task = asyncio.ensure_future(
-                                    asyncio.to_thread(sync_ingest, blob_url=blob_url, timeout_event=timeout_event,
-                                                      conn_string=AZ_STORAGE_CONN_STR, websocket_client=websocket_client)
-                                )
-                                ingest_task.set_name('ingest')
-                                lock_task = asyncio.ensure_future(
-                                    handle_lock(receiver=receiver, message=msg, timeout_event=timeout_event)
-                                )
-                                lock_task.set_name('lock')
+                                with websocket_client:
+                                    websocket_client.join_group(AZURE_WEBPUBSUB_GROUP_NAME)
+                                    # create and attach  azure log handler to the root logger
+                                    root_logger = logging.getLogger()
+                                    az_handler = AzureBlobStorageHandler(connection_string=AZ_STORAGE_CONN_STR,
+                                                                         blob_url=blob_url,
+                                                                         log_level=root_logger.level)
+                                    root_logger.addHandler(az_handler)
+                                    timeout_event = multiprocessing.Event()
+                                    ingest_task = asyncio.ensure_future(
+                                        asyncio.to_thread(sync_ingest, blob_url=blob_url, timeout_event=timeout_event,
+                                                          conn_string=AZ_STORAGE_CONN_STR, websocket_client=websocket_client)
+                                    )
+                                    ingest_task.set_name('ingest')
+                                    lock_task = asyncio.ensure_future(
+                                        handle_lock(receiver=receiver, message=msg, timeout_event=timeout_event)
+                                    )
+                                    lock_task.set_name('lock')
 
-                                done, pending = await asyncio.wait(
-                                    [lock_task, ingest_task],
-                                    return_when=asyncio.FIRST_COMPLETED,
-                                    timeout=INGEST_TIMEOUT,
-                                )
-                                if len(done) == 0:
-                                    logger.info(
-                                        f'Ingesting {blob_url} has timed out after {INGEST_TIMEOUT} seconds.')
-                                    timeout_event.set()
-                                    # upload an blob to the /dataset/{datasetname} folder.
-                                    await upload_timeout_blob(blob_url=blob_url, connection_string=AZ_STORAGE_CONN_STR)
+                                    done, pending = await asyncio.wait(
+                                        [lock_task, ingest_task],
+                                        return_when=asyncio.FIRST_COMPLETED,
+                                        timeout=INGEST_TIMEOUT,
+                                    )
+                                    if len(done) == 0:
+                                        logger.info(
+                                            f'Ingesting {blob_url} has timed out after {INGEST_TIMEOUT} seconds.')
+                                        timeout_event.set()
+                                        # upload an blob to the /dataset/{datasetname} folder.
+                                        await upload_timeout_blob(blob_url=blob_url, connection_string=AZ_STORAGE_CONN_STR)
 
-                                logger.debug(f'Handling done tasks')
-                                for done_future in done:
-                                    try:
-                                        await done_future
-                                        await receiver.complete_message(msg)
+                                    logger.debug(f'Handling done tasks')
+                                    for done_future in done:
+                                        try:
+                                            await done_future
+                                            await receiver.complete_message(msg)
 
-                                    except Exception as e:
-                                        with StringIO() as m:
-                                            print_exc(file=m)
-                                            em = m.getvalue()
-                                            logger.error(f'done future error {em}')
+                                        except Exception as e:
+                                            with StringIO() as m:
+                                                print_exc(file=m)
+                                                em = m.getvalue()
+                                                logger.error(f'done future error {em}')
 
-                                logger.debug(f'Cancelling pending tasks')
+                                    logger.debug(f'Cancelling pending tasks')
 
-                                for pending_future in pending:
-                                    try:
-                                        pending_future.cancel()
-                                        await pending_future
-                                    except asyncio.CancelledError:
-                                        logger.debug(
-                                            f'Pending future {pending_future.get_name()} has been cancelled')
-                                    except Exception as e:
-                                        raise
-                                root_logger.removeHandler(az_handler)
+                                    for pending_future in pending:
+                                        try:
+                                            pending_future.cancel()
+                                            await pending_future
+                                        except asyncio.CancelledError:
+                                            logger.debug(
+                                                f'Pending future {pending_future.get_name()} has been cancelled')
+                                        except Exception as e:
+                                            raise
+                                    root_logger.removeHandler(az_handler)
                             else:
                                 logger.info(
                                     f"Skipping {blob_url} because it is not in the {raw_folder} folder"
@@ -226,8 +227,8 @@ def sync_ingest(blob_url: str = None, token: str = None, timeout_event: multipro
                         timeout_event=timeout_event
                     )
                     payload = dict(user=user, url=blob_url, stage='downloading', progress=30)
-                    with websocket_client:
-                        websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
+
+                    websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                                    content=json.dumps(payload),
                                                     data_type=WebPubSubDataType.JSON)
                     if not temp_data_file:
