@@ -21,7 +21,7 @@ from ingest.utils import (
 from aiofile import AIOFile
 
 from ingest.ingest_exceptions import ClientRequestError, ResourceNotFoundError
-from wsockets.client import send_message
+
 
 logger = logging.getLogger(__name__)
 
