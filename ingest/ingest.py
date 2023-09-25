@@ -36,10 +36,6 @@ QUEUE_NAME = os.environ["SERVICE_BUS_QUEUE_NAME"]
 AZ_STORAGE_CONN_STR = os.environ['AZURE_STORAGE_CONNECTION_STRING']
 AZURE_WEBPUBSUB_CONNECTION_STRING = os.environ.get('AZURE_WEBPUBSUB_CONNECTION_STRING')
 
-def handle_connect(c, group_name):
-    c.join_group(group_name)
-
-
 async def ingest_message():
     async with ServiceBusClient.from_connection_string(
             conn_str=CONNECTION_STR, logging_enable=True

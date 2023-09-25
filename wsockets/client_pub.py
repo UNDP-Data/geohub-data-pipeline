@@ -32,12 +32,10 @@ if __name__ == '__main__':
     with client:
         # A client needs to join the group it wishes to receive messages from
         client.join_group(group_name)
-        for i in range(10):
-            print(f'before send message {i}')
-            client.send_to_group(group_name, content=f"hello world {i}", data_type="text")
-            print(f'after send message {i}')
-            time.sleep(1)
 
-    client.send_to_group(group_name, content=f"we are done", data_type="text")
+        client.send_to_group(group_name, content=f"I am here ", data_type="text")
+
+
+    #client.send_to_group(group_name, content=f"we are done", data_type="text")
 
     print(client._state)

@@ -8,13 +8,12 @@ import typing
 import tempfile
 from ingest.config import gdal_configs, attribution, AZURE_WEBPUBSUB_GROUP_NAME
 from rio_cogeo import cog_validate
-from azure.messaging.webpubsubclient import WebPubSubClient
 from azure.messaging.webpubsubclient.models import WebPubSubDataType
 import logging
 from ingest.utils import (
     prepare_arch_path,
     get_local_cog_path,
-    get_azure_blob_path, chop_blob_url,
+    get_azure_blob_path, chop_blob_url,compute_progress
 )
 from ingest.azblob import upload_blob, upload_content_to_blob, upload_ingesting_blob
 from traceback import print_exc
@@ -495,8 +494,7 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
             logger.info(f'Opened {src_file_path} with {vdataset.GetDriver().ShortName} vector driver')
             nvector_layers = vdataset.GetLayerCount()
             if nvector_layers > 0:
-                layer_progress_chunk = 70 // nvector_layers
-                progress = [30 + e if i < nvector_layers else 30 + e + 70 % nvector_layers for i, e in enumerate(range(0, 70, layer_progress_chunk))]
+                progress = compute_progress(nchunks=nvector_layers)
                 logger.info(f'Found {nvector_layers} vector layers')
                 _, file_name = os.path.split(vdataset.GetDescription())
                 layer_names = [vdataset.GetLayerByIndex(i).GetName() for i in range(nvector_layers)]
@@ -510,7 +508,7 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
                         if not is_cli:
                             payload = dict(user=user, url=blob_url, stage='processing',
                                            progress=progress[li])
-                            #with websocket_client:
+
                             websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                                                content=json.dumps(payload),
                                                                data_type=WebPubSubDataType.JSON)
@@ -552,9 +550,7 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
         subdatasets = rdataset.GetSubDatasets()
         if subdatasets:
             n_subdatasets = len(subdatasets)
-            subdataset_progress_chunk = 70 // n_subdatasets
-            progress = [30 + e if i < n_subdatasets else 30 + e + 70 % n_subdatasets for i, e in
-                        enumerate(range(0, 70, subdataset_progress_chunk))]
+            progress = compute_progress(nchunks=n_subdatasets)
 
             for subdataset_index, sdb in enumerate(subdatasets):
                 subdataset_path, subdataset_descr = sdb
@@ -609,15 +605,13 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
 
             else:
                 logger.info(f'Found {nraster_bands} rasters')
-                band_progress_chunk = 70 // nraster_bands
-                progress = [30 + e if i < nraster_bands else 30 + e + 70 % nraster_bands for i, e in
-                            enumerate(range(0, 70, band_progress_chunk))]
-                for band_no in bands:
+                progress = compute_progress(nchunks=nraster_bands)
+                for band_index, band_no in enumerate(bands):
                     logger.info(f'Ingesting band {band_no} from {src_file_path}')
                     dataset2cog(blob_url=blob_url, src_ds=rdataset, bands=[band_no],
                                 timeout_event=timeout_event, conn_string=conn_string, dst_directory=dst_directory)
                     if not is_cli:
-                        payload = dict(user=user, url=blob_url, stage='processing', progress=progress[band_no-1])
+                        payload = dict(user=user, url=blob_url, stage='processing', progress=progress[band_index])
                         #with websocket_client:
                         websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                                            content=json.dumps(payload),
