@@ -161,9 +161,12 @@ def dataset2fgb(fgb_dir: str = None,
                         file=m
                     )  # exc is extracted using system.exc_info
                     error_message = m.getvalue()
-                    msg = f'Failed to convert {lname} from {src_path} to FlatGeobuf. \n {error_message}'
+                    dataset_path = src_path
+                    msg = f'dataset: {dataset_path}\n'
+                    msg += f'layer: {lname}\n'
+                    msg += f'gdal_error_message: {error_message}'
                     logger.error(msg)
-                    # TODO upload error blob
+                    # upload error blob
                     blob_name = chop_blob_url(blob_url=blob_url)
                     container_name, *rest, blob_name = blob_name.split("/")
                     error_blob_path = f'{"/".join(rest)}/{blob_name}.error'
@@ -245,7 +248,11 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
                         file=m
                     )  # exc is extracted using system.exc_info
                     error_message = m.getvalue()
-                    logger.error(f'Failed to convert FlatGeobuf {fgb_layer_path} to PMtiles. {error_message}')
+                    dataset_path = layer_pmtiles_path
+                    msg = f'dataset: {dataset_path}\n'
+                    msg += f'layer: {layer_name}\n'
+                    msg += f'gdal_error_message: {error_message}'
+                    logger.error(msg)
                     # upload error file
                     if conn_string is not None:
                         container_name, pmtiles_blob_path = get_azure_blob_path(blob_url=blob_url,
@@ -314,7 +321,12 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
                     file=m
                 )  # exc is extracted using system.exc_info
                 error_message = m.getvalue()
-                logger.error(f'Failed to convert {",".join(fgb_layers)} from {fgb_dir} to PMtiles. {error_message}')
+                dataset_path = pmtiles_path
+                msg = f'dataset: {dataset_path}\n'
+                msg += f'layers: {",".join(fgb_layers)}\n'
+                msg += f'gdal_error_message: {error_message}'
+                logger.error(msg)
+
 
                 # upload error file
                 if conn_string is not None:
@@ -440,8 +452,17 @@ def dataset2cog(blob_url=None, src_ds: gdal.Dataset = None, bands: typing.List[i
                 print_exc(
                     file=m
                 )  # exc is extracted using system.exc_info
-                error_message = m.getvalue()
-                msg = f'Failed to convert {band_word} from {src_path} to COG. \n {error_message}'
+                gdal_error_message = m.getvalue()
+                dataset_path = src_path
+                subdataset = None
+                if ':' in src_path:
+                    dataset_path, subdataset = src_path.split(':')
+                bands = bands
+                msg = f'dataset: {dataset_path}\n'
+                if subdataset:
+                    msg += f'subdataset: {subdataset}\n'
+                msg+= f'bands: {bands}\n'
+                msg += f'gdal_error_message: {gdal_error_message}'
                 logger.error(msg)
                 # upload error blob
                 if conn_string is not None:
