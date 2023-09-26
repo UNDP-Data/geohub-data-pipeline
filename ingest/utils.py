@@ -73,6 +73,6 @@ def get_local_cog_path(src_path: str = None, dst_folder: str = None, band=None):
 def compute_progress(offset=30, nchunks=1):
     rest = 100-offset
     chunk_progress = rest//nchunks
-    rem = rest%chunk_progress
+    rem = rest%nchunks
     progress = [i*chunk_progress+offset if i%2==0 else i*chunk_progress+offset+rem for i, e in enumerate(range(nchunks), start=1)]
     return progress
