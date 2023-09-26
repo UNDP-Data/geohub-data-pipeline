@@ -456,7 +456,7 @@ def dataset2cog(blob_url=None, src_ds: gdal.Dataset = None, bands: typing.List[i
                 dataset_path = src_path
                 subdataset = None
                 if ':' in src_path:
-                    dataset_path, subdataset = src_path.split(':')
+                    driver, dataset_path, subdataset = src_path.split(':')
                 bands = bands
                 msg = f'dataset: {dataset_path}\n'
                 if subdataset:
