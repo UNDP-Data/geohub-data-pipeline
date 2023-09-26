@@ -70,9 +70,9 @@ def get_local_cog_path(src_path: str = None, dst_folder: str = None, band=None):
     else:
         return f'{os.path.join(dst_folder, f"{fname_without_ext}_band{band}.tif")}'
 
-def compute_progress(offset=30, nchunks=1):
+def compute_progress(offset=30, nchunks=1, ):
     rest = 100-offset
     chunk_progress = rest//nchunks
     rem = rest%nchunks
-    progress = [i*chunk_progress+offset if i%2==0 else i*chunk_progress+offset+rem for i, e in enumerate(range(nchunks), start=1)]
+    progress = [offset+chunk_progress+i*chunk_progress if i < nchunks-1 else rem+offset+chunk_progress+i*chunk_progress for i in range(nchunks)]
     return progress
