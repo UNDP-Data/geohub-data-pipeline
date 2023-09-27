@@ -29,19 +29,19 @@ def prepare_arch_path(src_path: str = None) -> str:
         return src_path
 
 
-def prepare_vsiaz_path(blob_path: str) -> str:
-    """
-    Compose the relative path of a blob so is can be opened by GDAL
-    """
-    _, ext = os.path.splitext(blob_path)
-
-    if ext in GDAL_ARCHIVE_FORMATS:
-        arch_driver = GDAL_ARCHIVE_FORMATS[ext]
-        prefix = f'/{arch_driver}/vsiaz'
-    else:
-        prefix = '/vsiaz'
-
-    return os.path.join(prefix, blob_path)
+# def prepare_vsiaz_path(blob_path: str) -> str:
+#     """
+#     Compose the relative path of a blob so is can be opened by GDAL
+#     """
+#     _, ext = os.path.splitext(blob_path)
+#
+#     if ext in GDAL_ARCHIVE_FORMATS:
+#         arch_driver = GDAL_ARCHIVE_FORMATS[ext]
+#         prefix = f'/{arch_driver}/vsiaz'
+#     else:
+#         prefix = '/vsiaz'
+#
+#     return os.path.join(prefix, blob_path)
 
 
 def get_dst_blob_path(blob_path: str, file_name=None) -> str:

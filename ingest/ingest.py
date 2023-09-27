@@ -230,7 +230,7 @@ def sync_ingest(blob_url: str = None, token: str = None, timeout_event: multipro
                                             data_type=WebPubSubDataType.JSON)
             if not temp_data_file:
                 raise Exception(f'Undetected exception has occurred while downloading {blob_path}')
-            temp_data_file = prepare_arch_path(temp_data_file)
+            #temp_data_file = prepare_arch_path(temp_data_file)
             process_geo_file(blob_url=blob_url, src_file_path=temp_data_file, join_vector_tiles=join_vector_tiles,
                              timeout_event=timeout_event,
                              conn_string=conn_string, websocket_client=websocket_client)
