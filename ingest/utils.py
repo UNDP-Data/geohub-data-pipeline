@@ -85,13 +85,21 @@ def get_progress(offset_perc=30, src_path:str = None):
     @param src_path:
     @return:
     """
-    ds = gdal.OpenEx(src_path, gdal.OF_VECTOR)
-    nvector_layers = ds.GetLayerCount()
-    del ds
-    ds = gdal.OpenEx(src_path, gdal.OF_RASTER)
-    nraster_bands = ds.RasterCount
-    n_subdatasets = len(ds.GetSubDatasets())
-    del ds
+    try:
+        ds = gdal.OpenEx(src_path, gdal.OF_VECTOR)
+        nvector_layers = ds.GetLayerCount()
+        del ds
+    except RuntimeError:
+        nvector_layers = 0
+
+    try:
+        ds = gdal.OpenEx(src_path, gdal.OF_RASTER)
+        nraster_bands = ds.RasterCount
+        n_subdatasets = len(ds.GetSubDatasets())
+        del ds
+    except RuntimeError:
+        nraster_bands = n_subdatasets = 0
+
     nchunks = nvector_layers+nraster_bands+n_subdatasets
     return compute_progress(offset=offset_perc, nchunks=nchunks)
 

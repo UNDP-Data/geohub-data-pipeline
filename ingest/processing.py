@@ -503,10 +503,10 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
     else:
         blob_path = chop_blob_url(blob_url)
         container_name, user, *rest = blob_path.split("/")
-    nvector_layers, n_subdatasets, nraster_bands, progressl = get_progress(offset_perc=30,src_path=src_file_path)
-    progress_index = 0
-    try:
 
+    try:
+        nvector_layers, n_subdatasets, nraster_bands, progressl = get_progress(offset_perc=30, src_path=src_file_path)
+        progress_index = 0
         # handle vectors first
         logger.debug(f'Opening {src_file_path}')
         try:
