@@ -212,32 +212,32 @@ def sync_ingest(blob_url: str = None, token: str = None, timeout_event: multipro
         asyncio.run(copy_raw2datasets(raw_blob_path=blob_path, connection_string=AZ_STORAGE_CONN_STR))
     else:
         # vsiaz_path = prepare_vsiaz_path(container_blob_path)
-        try:
+        #try:
 
 
 
-                with tempfile.TemporaryDirectory() as temp_dir:
-                    temp_data_file = download_blob_sync(
-                        local_folder=temp_dir,
-                        conn_string=conn_string,
-                        src_blob_path=blob_path,
-                        timeout_event=timeout_event
-                    )
-                    payload = dict(user=user, url=blob_url, stage='downloading', progress=30)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_data_file = download_blob_sync(
+                local_folder=temp_dir,
+                conn_string=conn_string,
+                src_blob_path=blob_path,
+                timeout_event=timeout_event
+            )
+            payload = dict(user=user, url=blob_url, stage='downloading', progress=30)
 
-                    websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
-                                                   content=json.dumps(payload),
-                                                    data_type=WebPubSubDataType.JSON)
-                    if not temp_data_file:
-                        raise Exception(f'Undetected exception has occurred while downloading {blob_path}')
-                    process_geo_file(blob_url=blob_url, src_file_path=temp_data_file, join_vector_tiles=join_vector_tiles,
-                                     timeout_event=timeout_event,
-                                     conn_string=conn_string, websocket_client=websocket_client)
-                    logger.info(f"Finished ingesting {blob_url}")
-        except TimeoutError as te:
-            logger.debug(te)
-        except Exception as ee:
-            with StringIO() as m:
-                print_exc(file=m)
-                em = m.getvalue()
-                logger.error(f'{em}')
+            websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
+                                           content=json.dumps(payload),
+                                            data_type=WebPubSubDataType.JSON)
+            if not temp_data_file:
+                raise Exception(f'Undetected exception has occurred while downloading {blob_path}')
+            process_geo_file(blob_url=blob_url, src_file_path=temp_data_file, join_vector_tiles=join_vector_tiles,
+                             timeout_event=timeout_event,
+                             conn_string=conn_string, websocket_client=websocket_client)
+            logger.info(f"Finished ingesting {blob_url}")
+        # except TimeoutError as te:
+                #     logger.debug(te)
+                # except Exception as ee:
+                #     with StringIO() as m:
+                #         print_exc(file=m)
+                #         em = m.getvalue()
+                #         logger.error(f'{em}')
