@@ -508,6 +508,12 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
         progressl = get_progress(offset_perc=30, src_path=src_file_path)
         if not progressl:
             logger.info(f'{blob_url} is empty')
+            payload = dict(user=user, url=blob_url, stage='processing',
+                           progress=100)
+
+            websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
+                                           content=json.dumps(payload),
+                                           data_type=WebPubSubDataType.JSON)
             return
         progress_index = 0
         # handle vectors first

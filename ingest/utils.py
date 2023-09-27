@@ -5,6 +5,9 @@ from ingest.config import (
     raw_folder,
     GDAL_ARCHIVE_FORMATS
 )
+import logging
+logger = logging.getLogger(__name__)
+
 from osgeo import gdal
 def chop_blob_url(blob_url: str) -> str:
     """
@@ -101,6 +104,10 @@ def get_progress(offset_perc=30, src_path:str = None):
         nraster_bands = n_subdatasets = 0
 
     nchunks = nvector_layers+nraster_bands+n_subdatasets
+    logger.info(f'{src_path} contains:\n')
+    logger.info(f'\t{nvector_layers} vector layers')
+    logger.info(f'\t{n_subdatasets} subdatasets')
+    logger.info(f'\t{nraster_bands} raster bands')
     if nchunks == 0:return []
     return compute_progress(offset=offset_perc, nchunks=nchunks)
 
