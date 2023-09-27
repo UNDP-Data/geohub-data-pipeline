@@ -506,6 +506,9 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
 
     try:
         progressl = get_progress(offset_perc=30, src_path=src_file_path)
+        if not progressl:
+            logger.info(f'{blob_url} is empty')
+            return
         progress_index = 0
         # handle vectors first
         logger.debug(f'Opening {src_file_path}')

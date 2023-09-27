@@ -101,6 +101,7 @@ def get_progress(offset_perc=30, src_path:str = None):
         nraster_bands = n_subdatasets = 0
 
     nchunks = nvector_layers+nraster_bands+n_subdatasets
+    if nchunks == 0:return []
     return compute_progress(offset=offset_perc, nchunks=nchunks)
 
 
