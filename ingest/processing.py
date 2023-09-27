@@ -267,16 +267,17 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
     else:
         # fgb_dir = None
         try:
-            assert pmtiles_file_name != '', f'Invalid PMtiles path {pmtiles_file_name}'
+            assert pmtiles_file_name != '', f'Invalid PMtiles file name {pmtiles_file_name}'
             fgb_sources = list()
             if dst_directory:
                 fgb_dir = dst_directory
-            else:
-                for layer_name, fgb_layer_path in fgb_layers.items():
-                    fgb_sources.append(f'--named-layer={layer_name}:{fgb_layer_path}')
-                    fgb_dir, _ = os.path.split(fgb_layer_path)
-                    break
-            pmtiles_path = os.path.join(fgb_dir, f'{pmtiles_file_name}.pmtiles')
+
+            for layer_name, fgb_layer_path in fgb_layers.items():
+                fgb_sources.append(f'--named-layer={layer_name}:{fgb_layer_path}')
+                fgb_dir, _ = os.path.split(fgb_layer_path)
+                break
+
+            pmtiles_path = os.path.join(fgb_dir, f'{pmtiles_file_name}.pmtiles' if not '.pmtiles' in pmtiles_file_name else pmtiles_file_name)
             tippecanoe_cmd = [
                 "tippecanoe",
                 "-o",
@@ -290,7 +291,7 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
                 "--no-tile-compression",
                 "--force",
                 f'--name={pmtiles_file_name}',
-                f'--description={pmtiles_file_name}',
+                f'--description={",".join(list(fgb_layers.keys()))}',
                 f'--attribution={attribution}',
             ]
 
@@ -299,8 +300,11 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
             with open(pmtiles_path, 'r+b') as f:
                 reader = Reader(MmapSource(f))
                 mdict = reader.metadata()
-                assert len(fgb_layers) == len([vl["id"] for vl in mdict[
-                    "vector_layers"]]), f'{layer_name} is not present in {pmtiles_path} PMTiles file.'
+                pmtiles_layers = [vl["id"] for vl in mdict["vector_layers"]]
+                inters = set(fgb_layers.keys()).intersection(pmtiles_layers)
+                if not len(inters) == len(fgb_layers):
+                    for e in set(fgb_layers.keys()).difference(pmtiles_layers):
+                        logger.info(f'Layer {e} was not converted to pmtiles in {pmtiles_path}')
             logger.info(f'Created multilayer PMtiles file {pmtiles_path}')
             # upload layer_pmtiles_path to azure
             if conn_string is not None:
