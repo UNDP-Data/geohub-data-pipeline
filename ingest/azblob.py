@@ -160,7 +160,9 @@ async def handle_lock(receiver=None, message=None, timeout_event: multiprocessin
     """
 
     msg_str = json.loads(str(message))
-    blob_path, token = msg_str.split(";")
+
+
+    blob_path, token, join_vector_tiles_str = msg_str.split(";")
     logger.debug(f'Starting lock monitoring for {blob_path}')
     while True:
         lu = message.locked_until_utc
