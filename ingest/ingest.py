@@ -59,8 +59,9 @@ async def ingest_message():
                     try:
                         msg_str = json.loads(str(msg))
 
-                        blob_url, token = msg_str.split(";")
+                        blob_url, token, join_vector_tiles_str = msg_str.split(";")
 
+                        join_vector_tiles = join_vector_tiles_str.split('=')[1] == 'true'
                         # if not 'Sample' in blob_url: continue
                         logger.info(
                             f"Received blob: {blob_url} from queue"
@@ -107,7 +108,7 @@ async def ingest_message():
                                     timeout_event = multiprocessing.Event()
                                     ingest_task = asyncio.ensure_future(
                                         asyncio.to_thread(sync_ingest, blob_url=blob_url, timeout_event=timeout_event,
-                                                          conn_string=AZ_STORAGE_CONN_STR, websocket_client=websocket_client)
+                                                          conn_string=AZ_STORAGE_CONN_STR, websocket_client=websocket_client, join_vector_tiles=join_vector_tiles)
                                     )
                                     ingest_task.set_name('ingest')
                                     lock_task = asyncio.ensure_future(
@@ -172,7 +173,7 @@ async def ingest_message():
 
 
 def sync_ingest(blob_url: str = None, token: str = None, timeout_event: multiprocessing.Event = None,
-                conn_string: str = None, websocket_client=None):
+                conn_string: str = None, websocket_client=None, join_vector_tiles=None):
     """
     Ingest a geospatial data file potentially containing multiple raster/vector layers
     into geohub
@@ -229,7 +230,7 @@ def sync_ingest(blob_url: str = None, token: str = None, timeout_event: multipro
                                                     data_type=WebPubSubDataType.JSON)
                     if not temp_data_file:
                         raise Exception(f'Undetected exception has occurred while downloading {blob_path}')
-                    process_geo_file(blob_url=blob_url, src_file_path=temp_data_file, join_vector_tiles=False,
+                    process_geo_file(blob_url=blob_url, src_file_path=temp_data_file, join_vector_tiles=join_vector_tiles,
                                      timeout_event=timeout_event,
                                      conn_string=conn_string, websocket_client=websocket_client)
                     logger.info(f"Finished ingesting {blob_url}")
