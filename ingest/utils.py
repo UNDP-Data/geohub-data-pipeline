@@ -21,7 +21,7 @@ def prepare_arch_path(src_path: str = None) -> str:
 
     if ext in GDAL_ARCHIVE_FORMATS:
         arch_driver = GDAL_ARCHIVE_FORMATS[ext]
-        return os.path.join(os.path.sep, arch_driver, src_path[1:])
+        return f'{arch_driver}{src_path}'
     else:
         return src_path
 

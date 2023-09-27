@@ -19,7 +19,7 @@ from ingest.azblob import (
 )
 from azure.messaging.webpubsubclient import WebPubSubClient
 from azure.messaging.webpubsubclient.models import WebPubSubDataType
-
+from ingest.utils import prepare_arch_path
 logger = logging.getLogger(__name__)
 
 # silence azure logger
@@ -211,7 +211,7 @@ def sync_ingest(blob_url: str = None, token: str = None, timeout_event: multipro
     if blob_url.endswith(".pmtiles"):
         asyncio.run(copy_raw2datasets(raw_blob_path=blob_path, connection_string=AZ_STORAGE_CONN_STR))
     else:
-        # vsiaz_path = prepare_vsiaz_path(container_blob_path)
+
         #try:
 
 
@@ -230,6 +230,7 @@ def sync_ingest(blob_url: str = None, token: str = None, timeout_event: multipro
                                             data_type=WebPubSubDataType.JSON)
             if not temp_data_file:
                 raise Exception(f'Undetected exception has occurred while downloading {blob_path}')
+            temp_data_file = prepare_arch_path(temp_data_file)
             process_geo_file(blob_url=blob_url, src_file_path=temp_data_file, join_vector_tiles=join_vector_tiles,
                              timeout_event=timeout_event,
                              conn_string=conn_string, websocket_client=websocket_client)

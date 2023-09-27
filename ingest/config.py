@@ -30,11 +30,11 @@ attribution = "United Nations Development Programme (UNDP)"
 # os.environ["AZURE_STORAGE_CONNECTION_STRING"] = connection_string
 AZURE_WEBPUBSUB_GROUP_NAME = 'datapipeline'
 GDAL_ARCHIVE_FORMATS = {
-    ".zip": "vsizip",
-    ".gz": "vsigzip",
-    ".tar": "vsitar",
-    ".tgz": "vsitar",
-    ".7z": "vsi7z",
+    ".zip": "/vsizip/",
+    ".gz": "/vsigzip/",
+    ".tar": "/vsitar/",
+    ".tgz": "/vsitar/",
+    ".7z": "/vsi7z/",
 }
 
 OUT_FORMATS = {'.pmtiles': 'PMTiles', '.tif':'GeoTIFF', 'tiff':'GeoTIFF'}
