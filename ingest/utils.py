@@ -5,7 +5,7 @@ from ingest.config import (
     raw_folder,
     GDAL_ARCHIVE_FORMATS
 )
-
+from osgeo import gdal
 def chop_blob_url(blob_url: str) -> str:
     """
     Safely extract relative path of the blob from its url using urllib
@@ -76,3 +76,24 @@ def compute_progress(offset=30, nchunks=1, ):
     rem = rest%nchunks
     progress = [offset+chunk_progress+i*chunk_progress if i < nchunks-1 else rem+offset+chunk_progress+i*chunk_progress for i in range(nchunks)]
     return progress
+
+
+def get_progress(offset_perc=30, src_path:str = None):
+    """
+    Given a GDAL data fiel compute layer/rabster band/ subdataset progress list
+    @param offset_perc:
+    @param src_path:
+    @return:
+    """
+    ds = gdal.OpenEx(src_path, gdal.OF_VECTOR)
+    nvector_layers = ds.GetLayerCount()
+    del ds
+    ds = gdal.OpenEx(src_path, gdal.OF_RASTER)
+    nraster_bands = ds.RasterCount
+    n_subdatasets = len(ds.GetSubDatasets())
+    del ds
+    nchunks = nvector_layers+nraster_bands+n_subdatasets
+    return compute_progress(offset=offset_perc, nchunks=nchunks)
+
+
+

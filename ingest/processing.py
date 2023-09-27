@@ -13,7 +13,7 @@ import logging
 from ingest.utils import (
     prepare_arch_path,
     get_local_cog_path,
-    get_azure_blob_path, chop_blob_url,compute_progress
+    get_azure_blob_path, chop_blob_url, get_progress
 )
 from ingest.azblob import upload_blob, upload_content_to_blob, upload_ingesting_blob
 from traceback import print_exc
@@ -267,16 +267,17 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
     else:
         # fgb_dir = None
         try:
-            assert pmtiles_file_name != '', f'Invalid PMtiles path {pmtiles_file_name}'
+            assert pmtiles_file_name != '', f'Invalid PMtiles file name {pmtiles_file_name}'
             fgb_sources = list()
             if dst_directory:
                 fgb_dir = dst_directory
-            else:
-                for layer_name, fgb_layer_path in fgb_layers.items():
-                    fgb_sources.append(f'--named-layer={layer_name}:{fgb_layer_path}')
-                    fgb_dir, _ = os.path.split(fgb_layer_path)
-                    break
-            pmtiles_path = os.path.join(fgb_dir, f'{pmtiles_file_name}.pmtiles')
+
+            for layer_name, fgb_layer_path in fgb_layers.items():
+                fgb_sources.append(f'--named-layer={layer_name}:{fgb_layer_path}')
+                fgb_dir, _ = os.path.split(fgb_layer_path)
+                break
+
+            pmtiles_path = os.path.join(fgb_dir, f'{pmtiles_file_name}.pmtiles' if not '.pmtiles' in pmtiles_file_name else pmtiles_file_name)
             tippecanoe_cmd = [
                 "tippecanoe",
                 "-o",
@@ -290,7 +291,7 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
                 "--no-tile-compression",
                 "--force",
                 f'--name={pmtiles_file_name}',
-                f'--description={pmtiles_file_name}',
+                f'--description={",".join(list(fgb_layers.keys()))}',
                 f'--attribution={attribution}',
             ]
 
@@ -299,8 +300,11 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
             with open(pmtiles_path, 'r+b') as f:
                 reader = Reader(MmapSource(f))
                 mdict = reader.metadata()
-                assert len(fgb_layers) == len([vl["id"] for vl in mdict[
-                    "vector_layers"]]), f'{layer_name} is not present in {pmtiles_path} PMTiles file.'
+                pmtiles_layers = [vl["id"] for vl in mdict["vector_layers"]]
+                inters = set(fgb_layers.keys()).intersection(pmtiles_layers)
+                if not len(inters) == len(fgb_layers):
+                    for e in set(fgb_layers.keys()).difference(pmtiles_layers):
+                        logger.info(f'Layer {e} was not converted to pmtiles in {pmtiles_path}')
             logger.info(f'Created multilayer PMtiles file {pmtiles_path}')
             # upload layer_pmtiles_path to azure
             if conn_string is not None:
@@ -499,6 +503,8 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
     else:
         blob_path = chop_blob_url(blob_url)
         container_name, user, *rest = blob_path.split("/")
+    nvector_layers, n_subdatasets, nraster_bands, progressl = get_progress(offset_perc=30,src_path=src_file_path)
+    progress_index = 0
     try:
 
         # handle vectors first
@@ -515,7 +521,7 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
             logger.info(f'Opened {src_file_path} with {vdataset.GetDriver().ShortName} vector driver')
             nvector_layers = vdataset.GetLayerCount()
             if nvector_layers > 0:
-                progress = compute_progress(nchunks=nvector_layers)
+
                 logger.info(f'Found {nvector_layers} vector layers')
                 _, file_name = os.path.split(vdataset.GetDescription())
                 layer_names = [vdataset.GetLayerByIndex(i).GetName() for i in range(nvector_layers)]
@@ -527,8 +533,9 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
                                         timeout_event=timeout_event, conn_string=conn_string,
                                         dst_directory=dst_directory)
                         if not is_cli:
+                            progress_index = li
                             payload = dict(user=user, url=blob_url, stage='processing',
-                                           progress=progress[li])
+                                           progress=progressl[progress_index])
 
                             websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                                                content=json.dumps(payload),
@@ -540,8 +547,10 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
                                     pmtiles_file_name=fname, timeout_event=timeout_event, conn_string=conn_string,
                                     dst_directory=dst_directory)
                     if not is_cli:
+                        progress_index += nvector_layers
                         payload = dict(user=user, url=blob_url, stage='processing',
-                                       progress=100)
+                                       progress=progressl[progress_index-1])
+
                         #with websocket_client:
                         websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                                            content=json.dumps(payload),
@@ -571,7 +580,7 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
         subdatasets = rdataset.GetSubDatasets()
         if subdatasets:
             n_subdatasets = len(subdatasets)
-            progress = compute_progress(nchunks=n_subdatasets)
+
 
             for subdataset_index, sdb in enumerate(subdatasets):
                 subdataset_path, subdataset_descr = sdb
@@ -598,11 +607,13 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
 
                 del subds
                 if not is_cli:
-                    payload = dict(user=user, url=blob_url, stage='processing', progress=progress[subdataset_index])
+                    progress_index += subdataset_index
+                    payload = dict(user=user, url=blob_url, stage='processing', progress=progressl[progress_index])
                     #with websocket_client:
                     websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                                        content=json.dumps(payload),
                                                        data_type=WebPubSubDataType.JSON)
+
 
 
         if nraster_bands:  # raster data is located at root
@@ -618,7 +629,8 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
                 dataset2cog(blob_url=blob_url, src_ds=rdataset, timeout_event=timeout_event,
                             conn_string=conn_string, dst_directory=dst_directory)
                 if not is_cli:
-                    payload = dict(user=user, url=blob_url, stage='processing', progress=100)
+                    progress_index += no_colorinterp_bands
+                    payload = dict(user=user, url=blob_url, stage='processing', progress=progressl[progress_index-1])
                     #with websocket_client:
                     websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                                        content=json.dumps(payload),
@@ -626,13 +638,14 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
 
             else:
                 logger.info(f'Found {nraster_bands} rasters')
-                progress = compute_progress(nchunks=nraster_bands)
+
                 for band_index, band_no in enumerate(bands):
+                    progress_index+=band_index
                     logger.info(f'Ingesting band {band_no} from {src_file_path}')
                     dataset2cog(blob_url=blob_url, src_ds=rdataset, bands=[band_no],
                                 timeout_event=timeout_event, conn_string=conn_string, dst_directory=dst_directory)
                     if not is_cli:
-                        payload = dict(user=user, url=blob_url, stage='processing', progress=progress[band_index])
+                        payload = dict(user=user, url=blob_url, stage='processing', progress=progressl[progress_index])
                         #with websocket_client:
                         websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                                            content=json.dumps(payload),
