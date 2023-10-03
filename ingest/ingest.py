@@ -223,11 +223,12 @@ def sync_ingest(blob_url: str = None, token: str = None, timeout_event: multipro
                 src_blob_path=blob_path,
                 timeout_event=timeout_event
             )
-            payload = dict(user=user, url=blob_url, stage='downloading', progress=30)
+            if websocket_client:
+                payload = dict(user=user, url=blob_url, stage='downloading', progress=30)
 
-            websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
-                                           content=json.dumps(payload),
-                                            data_type=WebPubSubDataType.JSON)
+                websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
+                                               content=json.dumps(payload),
+                                                data_type=WebPubSubDataType.JSON)
             if not temp_data_file:
                 raise Exception(f'Undetected exception has occurred while downloading {blob_path}')
             #temp_data_file = prepare_arch_path(temp_data_file)

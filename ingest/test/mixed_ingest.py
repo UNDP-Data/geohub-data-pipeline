@@ -23,7 +23,8 @@ if __name__ == '__main__':
     logger.name = __name__
 
     logger.setLevel('INFO')
-    fpath = '/data/File_GeoHub_Geodatabase.gdb'
+    fpath = '/data/gdp/File_GeoHub_Geodatabase.gdb.zip'
+    fpath = '/data/gdp/a_20231003072549.zip'
 
     # fpath = '/vsizip/data/featuredataset.gdb.zip'
     # fpath = '/data/Sample.gpkg'
@@ -33,10 +34,10 @@ if __name__ == '__main__':
     blob_url = 'https://undpgeohub.blob.core.windows.net/userdata/test/CP_CDIS_C_PSY.fgb'
 
     te = Event()
-    process_geo_file(blob_url=blob_url,
-                     src_file_path='/home/thuha/Desktop/UNDP/geohub-data-pipeline/data/AH_ALCO_M_DK1.fgb',
+    process_geo_file(blob_url='https://undpgeohub.blob.core.windows.net/userdata/9426cffc00b069908b2868935d1f3e90/raw/a_20231003072549.zip',
+                     src_file_path=fpath,
                      conn_string=os.environ.get('AZURE_STORAGE_CONNECTION_STRING'),
-                     timeout_event=te, join_vector_tiles=False)
+                     timeout_event=te, join_vector_tiles=True)
 
     # fpath = '/home/thuha/Desktop/data/geohub_data_pipeline/File_GeoHub_Geodatabase.gdb'
     # process_geo_file(

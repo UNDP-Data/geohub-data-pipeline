@@ -506,8 +506,19 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
 
     try:
         progressl = get_progress(offset_perc=30, src_path=src_file_path)
-        if not progressl:
-            logger.info(f'{blob_url} is empty')
+        if not progressl and websocket_client:
+            #upload error file
+            gdal_error_message = f'Datafile {blob_url} is empty'
+            msg = f'gdal_error_message: {gdal_error_message}'
+            logger.error(gdal_error_message)
+            # upload error blob
+            if conn_string is not None:
+                blob_name = chop_blob_url(blob_url=blob_url)
+                container_name, *rest, blob_name = blob_name.split("/")
+                error_blob_path = f'{"/".join(rest)}/{blob_name}.error'
+                upload_content_to_blob(content=msg, connection_string=conn_string,
+                                       container_name=container_name,
+                                       dst_blob_path=error_blob_path)
             payload = dict(user=user, url=blob_url, stage='processing',
                            progress=100)
 
@@ -541,7 +552,7 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
                         dataset2pmtiles(blob_url=blob_url, src_ds=vdataset, layers=[layer_name],
                                         timeout_event=timeout_event, conn_string=conn_string,
                                         dst_directory=dst_directory)
-                        if not is_cli:
+                        if not is_cli and websocket_client:
                             progress_index = li
                             payload = dict(user=user, url=blob_url, stage='processing',
                                            progress=progressl[progress_index])
@@ -555,7 +566,7 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
                     dataset2pmtiles(blob_url=blob_url, src_ds=vdataset, layers=layer_names,
                                     pmtiles_file_name=fname, timeout_event=timeout_event, conn_string=conn_string,
                                     dst_directory=dst_directory)
-                    if not is_cli:
+                    if not is_cli and websocket_client:
                         progress_index += nvector_layers
                         payload = dict(user=user, url=blob_url, stage='processing',
                                        progress=progressl[progress_index-1])
@@ -615,7 +626,7 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
                                     conn_string=conn_string, dst_directory=dst_directory)
 
                 del subds
-                if not is_cli:
+                if not is_cli and websocket_client:
                     progress_index += subdataset_index
                     payload = dict(user=user, url=blob_url, stage='processing', progress=progressl[progress_index])
                     #with websocket_client:
@@ -653,7 +664,7 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
                     logger.info(f'Ingesting band {band_no} from {src_file_path}')
                     dataset2cog(blob_url=blob_url, src_ds=rdataset, bands=[band_no],
                                 timeout_event=timeout_event, conn_string=conn_string, dst_directory=dst_directory)
-                    if not is_cli:
+                    if not is_cli and websocket_client:
                         payload = dict(user=user, url=blob_url, stage='processing', progress=progressl[progress_index])
                         #with websocket_client:
                         websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
