@@ -161,7 +161,7 @@ def dataset2fgb(fgb_dir: str = None,
                         file=m
                     )  # exc is extracted using system.exc_info
                     error_message = m.getvalue()
-                    dataset_path = src_path
+                    dataset_path = blob_url
                     msg = f'dataset: {dataset_path}\n'
                     msg += f'layer: {lname}\n'
                     msg += f'gdal_error_message: {error_message}'
@@ -248,19 +248,19 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
                         file=m
                     )  # exc is extracted using system.exc_info
                     error_message = m.getvalue()
-                    dataset_path = layer_pmtiles_path
+                    dataset_path = blob_url
                     msg = f'dataset: {dataset_path}\n'
                     msg += f'layer: {layer_name}\n'
                     msg += f'gdal_error_message: {error_message}'
                     logger.error(msg)
                     # upload error file
                     if conn_string is not None:
-                        container_name, pmtiles_blob_path = get_azure_blob_path(blob_url=blob_url,
-                                                                                local_path=layer_pmtiles_path)
-                        error_pmtiles_blob_path = f'{pmtiles_blob_path}.error'
+                        blob_name = chop_blob_url(blob_url=blob_url)
+                        container_name, *rest, blob_name = blob_name.split("/")
+                        error_blob_path = f'{"/".join(rest)}/{blob_name}.error'
                         upload_content_to_blob(content=error_message, connection_string=conn_string,
                                                container_name=container_name,
-                                               dst_blob_path=error_pmtiles_blob_path)
+                                               dst_blob_path=error_blob_path)
                 if len(fgb_layers) > 1: logger.error(f'Moving to next layer')
 
 
@@ -271,11 +271,13 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
             fgb_sources = list()
             if dst_directory:
                 fgb_dir = dst_directory
-
+            else:
+                fgb_dir = None
             for layer_name, fgb_layer_path in fgb_layers.items():
                 fgb_sources.append(f'--named-layer={layer_name}:{fgb_layer_path}')
-                fgb_dir, _ = os.path.split(fgb_layer_path)
-                break
+                if fgb_dir is None:
+                    fgb_dir, _ = os.path.split(fgb_layer_path)
+
 
             pmtiles_path = os.path.join(fgb_dir, f'{pmtiles_file_name}.pmtiles' if not '.pmtiles' in pmtiles_file_name else pmtiles_file_name)
             tippecanoe_cmd = [
@@ -325,7 +327,7 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
                     file=m
                 )  # exc is extracted using system.exc_info
                 error_message = m.getvalue()
-                dataset_path = pmtiles_path
+                dataset_path = blob_url
                 msg = f'dataset: {dataset_path}\n'
                 msg += f'layers: {",".join(fgb_layers)}\n'
                 msg += f'gdal_error_message: {error_message}'
@@ -334,9 +336,6 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
 
                 # upload error file
                 if conn_string is not None:
-                    container_name, pmtiles_blob_path = get_azure_blob_path(blob_url=blob_url,
-                                                                            local_path=pmtiles_path)
-
                     blob_name = chop_blob_url(blob_url=blob_url)
                     container_name, *rest, blob_name = blob_name.split("/")
                     error_blob_path = f'{"/".join(rest)}/{blob_name}.error'
@@ -457,7 +456,7 @@ def dataset2cog(blob_url=None, src_ds: gdal.Dataset = None, bands: typing.List[i
                     file=m
                 )  # exc is extracted using system.exc_info
                 gdal_error_message = m.getvalue()
-                dataset_path = src_path
+                dataset_path = blob_url
                 subdataset = None
                 if ':' in src_path:
                     driver, dataset_path, subdataset = src_path.split(':')
