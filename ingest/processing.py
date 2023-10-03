@@ -561,7 +561,7 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
                                                                data_type=WebPubSubDataType.JSON)
                 else:
                     logger.info(f'Ingesting all vector layers into one multilayer PMtiles file')
-                    fname, ext = os.path.splitext(file_name)
+                    fname, *ext = file_name.split(os.extsep)
                     dataset2pmtiles(blob_url=blob_url, src_ds=vdataset, layers=layer_names,
                                     pmtiles_file_name=fname, timeout_event=timeout_event, conn_string=conn_string,
                                     dst_directory=dst_directory)
