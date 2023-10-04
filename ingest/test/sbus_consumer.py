@@ -1,6 +1,8 @@
 import datetime
+import multiprocessing
 import time
 import os
+import json
 import os.path
 from io import StringIO
 # from dotenv import dotenv_values
@@ -9,14 +11,21 @@ from traceback import print_exc
 import random
 import asyncio
 import logging
+from ingest.azblob import download_blob_sync
+from ingest.utils import chop_blob_url
 # cfg = dotenv_values('../../.env')
 
-CONNECTION_STR = os.getenv('SERVICE_BUS_CONNECTION_STRING_DEV')
-QUEUE_NAME='data-upload-dev'
+CONNECTION_STR = os.getenv('SERVICE_BUS_CONNECTION_STRING')
+AZ_STORAGE_CONN_STR = os.environ['AZURE_STORAGE_CONNECTION_STRING']
+QUEUE_NAME='data-upload'
 MAX_SLEEP_SECS = 300
 LOCK_SECS = 10
 TZ = datetime.tzinfo
 RUN_FOREVER = False
+azlogger = logging.getLogger("azure.core.pipeline.policies.http_logging_policy")
+azlogger.setLevel(logging.WARNING)
+sblogger = logging.getLogger("uamqp")
+sblogger.setLevel(logging.WARNING)
 
 async def random_sleep(msg=None):
 
@@ -52,15 +61,26 @@ async def consume():
             async with receiver:
                 while True:
                     received_msgs = await receiver.receive_messages(max_message_count=1, max_wait_time=5)
-                    #received_msgs = await receiver.peek_messages(max_message_count=10)
+                    #received_msgs = await receiver.peek_messages(max_message_count=2,)
                     if not received_msgs:
                         logger.info(f'No messages to process')
                         if not RUN_FOREVER:break
                         else:
                             await random_sleep()
+                    bllobs = []
                     for msg in received_msgs:
-                        logger.info(f'Consumer got message {str(msg)}')
+                        #logger.info(f'Consumer got message {str(msg.message.locked_until_utc)}')
+                        msg_str = json.loads(str(msg))
 
+                        blob_url, token, join_vector_tiles_str = msg_str.split(";")
+                        logger.info(blob_url)
+                        blob_path = chop_blob_url(blob_url)
+                        logger.info(blob_path)
+                        if blob_path in bllobs:break
+                        bllobs.append(blob_path)
+                        logger.info(bllobs)
+
+                        continue
                         logger.info(f'Going to lock message {str(msg)} and auto-renew every {LOCK_SECS} secs')
                         async with AutoLockRenewer() as auto_lock_renewer:
                             auto_lock_renewer.register(receiver=receiver, renewable=msg,max_lock_renewal_duration=LOCK_SECS)

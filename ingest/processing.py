@@ -373,7 +373,6 @@ def dataset2pmtiles(blob_url: str = None,
     Last, the PMTile files are uploaded to Azure
 
     """
-
     with tempfile.TemporaryDirectory() as temp_dir:
         fgb_layers = dataset2fgb(fgb_dir=temp_dir,
                                  src_ds=src_ds,
@@ -498,7 +497,7 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
     is_cli = blob_url is None and dst_directory is not None
     if is_cli:
         assert os.path.isdir(dst_directory), f'dst_directory={dst_directory} needs to be a directory'
-        assert os.path.exists(dst_directory), f'dst_directory={dst_directory} des not exist'
+        assert os.path.exists(dst_directory), f'dst_directory={dst_directory} does not exist'
     else:
         blob_path = chop_blob_url(blob_url)
         container_name, user, *rest = blob_path.split("/")
@@ -518,13 +517,14 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
                 upload_content_to_blob(content=msg, connection_string=conn_string,
                                        container_name=container_name,
                                        dst_blob_path=error_blob_path)
-            payload = dict(user=user, url=blob_url, stage='processing',
-                           progress=100)
+
+            payload = dict(user=user, url=blob_url, stage='processed', progress=100)
 
             websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                            content=json.dumps(payload),
                                            data_type=WebPubSubDataType.JSON)
             return
+
         progress_index = 0
         # handle vectors first
         logger.debug(f'Opening {src_file_path}')
@@ -547,18 +547,19 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
                 if not join_vector_tiles:
 
                     for li, layer_name in enumerate(layer_names):
-                        logger.info(f'Ingesting vector layer "{layer_name}"')
+                        logger.info(f'Ingesting vector layer "{layer_name}".')
                         dataset2pmtiles(blob_url=blob_url, src_ds=vdataset, layers=[layer_name],
                                         timeout_event=timeout_event, conn_string=conn_string,
                                         dst_directory=dst_directory)
                         if not is_cli and websocket_client:
-                            progress_index = li
-                            payload = dict(user=user, url=blob_url, stage='processing',
-                                           progress=progressl[progress_index])
+                            progrs = progressl[progress_index]
+                            stage = 'processing' if progrs < 100 else 'processed'
+                            payload = dict(user=user, url=blob_url, stage=stage, progress=progrs)
 
                             websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                                                content=json.dumps(payload),
                                                                data_type=WebPubSubDataType.JSON)
+                            progress_index += 1
                 else:
                     logger.info(f'Ingesting all vector layers into one multilayer PMtiles file')
                     fname, *ext = file_name.split(os.extsep)
@@ -566,14 +567,15 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
                                     pmtiles_file_name=fname, timeout_event=timeout_event, conn_string=conn_string,
                                     dst_directory=dst_directory)
                     if not is_cli and websocket_client:
-                        progress_index += nvector_layers
-                        payload = dict(user=user, url=blob_url, stage='processing',
-                                       progress=progressl[progress_index-1])
-
+                        progress_index += nvector_layers-1
+                        progrs = progressl[progress_index]
+                        stage = 'processing' if progrs < 100 else 'processed'
+                        payload = dict(user=user, url=blob_url, stage=stage, progress=progrs)
                         #with websocket_client:
                         websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                                            content=json.dumps(payload),
                                                            data_type=WebPubSubDataType.JSON)
+                        progress_index += 1
             else:
                 logger.info(f'{src_file_path} contains {nvector_layers} vector layers')
             del vdataset
@@ -599,12 +601,9 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
         subdatasets = rdataset.GetSubDatasets()
         if subdatasets:
             n_subdatasets = len(subdatasets)
-
-
-            for subdataset_index, sdb in enumerate(subdatasets):
+            for subdataset_index, sdb in enumerate(subdatasets, start=1):
                 subdataset_path, subdataset_descr = sdb
                 subds = gdal.Open(subdataset_path.replace('\"', ''))
-                # logger.info(f'Opening raster subdataset {subdataset_descr} featuring {subds.RasterCount} bands')
                 subds_bands = [b + 1 for b in range(subds.RasterCount)]
                 subds_colorinterp = []
                 if subds_bands:
@@ -626,12 +625,15 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
 
                 del subds
                 if not is_cli and websocket_client:
-                    progress_index += subdataset_index
-                    payload = dict(user=user, url=blob_url, stage='processing', progress=progressl[progress_index])
+                    progrs = progressl[progress_index]
+                    stage = 'processing' if progrs < 100 else 'processed'
+                    payload = dict(user=user, url=blob_url, stage=stage, progress=progrs)
+
                     #with websocket_client:
                     websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                                        content=json.dumps(payload),
                                                        data_type=WebPubSubDataType.JSON)
+                    progress_index += 1
 
 
 
@@ -644,31 +646,36 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
             no_colorinterp_bands = len(colorinterp)
             photometric = rdataset.GetMetadataItem('PHOTOMETRIC')
             if max(colorinterp) >= 3 or photometric is not None:
-                logger.info(f'Ingesting multiband(RGB) dataset {src_file_path}')
+                logger.info(f'Ingesting bands {bands} as a multiband COG')
                 dataset2cog(blob_url=blob_url, src_ds=rdataset, timeout_event=timeout_event,
                             conn_string=conn_string, dst_directory=dst_directory)
-                if not is_cli:
-                    progress_index += no_colorinterp_bands
-                    payload = dict(user=user, url=blob_url, stage='processing', progress=progressl[progress_index-1])
-                    #with websocket_client:
+                if not is_cli and websocket_client:
+                    progress_index += no_colorinterp_bands-1
+                    progrs = progressl[progress_index]
+                    stage = 'processing' if progrs < 100 else 'processed'
+                    payload = dict(user=user, url=blob_url, stage=stage, progress=progrs)
                     websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                                        content=json.dumps(payload),
                                                        data_type=WebPubSubDataType.JSON)
+                    progress_index+=1
 
             else:
-                logger.info(f'Found {nraster_bands} rasters')
+                logger.info(f'Ingesting {nraster_bands} raster bands')
 
                 for band_index, band_no in enumerate(bands):
-                    progress_index+=band_index
+
                     logger.info(f'Ingesting band {band_no} from {src_file_path}')
                     dataset2cog(blob_url=blob_url, src_ds=rdataset, bands=[band_no],
                                 timeout_event=timeout_event, conn_string=conn_string, dst_directory=dst_directory)
                     if not is_cli and websocket_client:
-                        payload = dict(user=user, url=blob_url, stage='processing', progress=progressl[progress_index])
+                        progrs = progressl[progress_index]
+                        stage = 'processing' if progrs < 100 else 'processed'
+                        payload = dict(user=user, url=blob_url, stage=stage, progress=progrs)
                         #with websocket_client:
                         websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                                            content=json.dumps(payload),
                                                            data_type=WebPubSubDataType.JSON)
+                    progress_index += 1
 
         del rdataset
 

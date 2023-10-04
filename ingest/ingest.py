@@ -211,11 +211,6 @@ def sync_ingest(blob_url: str = None, token: str = None, timeout_event: multipro
     if blob_url.endswith(".pmtiles"):
         asyncio.run(copy_raw2datasets(raw_blob_path=blob_path, connection_string=AZ_STORAGE_CONN_STR))
     else:
-
-        #try:
-
-
-
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_data_file = download_blob_sync(
                 local_folder=temp_dir,
@@ -224,22 +219,15 @@ def sync_ingest(blob_url: str = None, token: str = None, timeout_event: multipro
                 timeout_event=timeout_event
             )
             if websocket_client:
-                payload = dict(user=user, url=blob_url, stage='downloading', progress=30)
+                payload = dict(user=user, url=blob_url, stage='downloaded', progress=30)
 
                 websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                                content=json.dumps(payload),
                                                 data_type=WebPubSubDataType.JSON)
             if not temp_data_file:
                 raise Exception(f'Undetected exception has occurred while downloading {blob_path}')
-            #temp_data_file = prepare_arch_path(temp_data_file)
             process_geo_file(blob_url=blob_url, src_file_path=temp_data_file, join_vector_tiles=join_vector_tiles,
                              timeout_event=timeout_event,
                              conn_string=conn_string, websocket_client=websocket_client)
             logger.info(f"Finished ingesting {blob_url}")
-        # except TimeoutError as te:
-                #     logger.debug(te)
-                # except Exception as ee:
-                #     with StringIO() as m:
-                #         print_exc(file=m)
-                #         em = m.getvalue()
-                #         logger.error(f'{em}')
+
