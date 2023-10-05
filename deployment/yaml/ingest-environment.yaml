@@ -55,8 +55,7 @@ spec:
     name: ingest
   pollingInterval: 10
   cooldownPeriod: 60
-  idleReplicaCount: 1
-  minReplicaCount:  2
+  minReplicaCount:  1
   maxReplicaCount:  3 
   triggers:
   - type: azure-servicebus
