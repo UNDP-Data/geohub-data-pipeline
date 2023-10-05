@@ -139,12 +139,13 @@ def dataset2fgb(fgb_dir: str = None,
                 '-makevalid'
 
             ]
+
             reproject = should_reproject(src_srs=layer_srs, dst_srs=dst_srs)
             if reproject:
                 fgb_opts.append(f'-t_srs EPSG:{dst_prj_epsg}')
             fgb_opts.append(f'"{lname}"')
             logger.debug(f'Converting {lname} from {src_path} into {dst_path}')
-
+            logger.debug(f'srs:{layer_srs} should repr {reproject} {" ".join(fgb_opts)}')
             fgb_ds = gdal.VectorTranslate(destNameOrDestDS=dst_path,
                                           srcDS=src_ds,
                                           reproject=reproject,
@@ -154,7 +155,7 @@ def dataset2fgb(fgb_dir: str = None,
                                           )
             converted_features = fgb_ds.GetLayerByName(lname).GetFeatureCount()
             logger.debug(f'Original no of features {original_features} vs converted {converted_features}')
-            logger.debug(json.dumps(gdal.Info(fgb_ds, format='json'), indent=4))
+            logger.debug(gdal.VectorInfo(fgb_ds, format='json', options='-al -so'))
             logger.info(f'Converted {lname} from {src_path} into {dst_path}')
             converted_layers[lname] = dst_path
             del fgb_ds
@@ -230,9 +231,11 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
                     reader = Reader(MmapSource(f))
                     mdict = reader.metadata()
                     logger.debug(json.dumps(mdict, indent=2))
-                    assert layer_name in [vl["id"] for vl in mdict[
-                        "vector_layers"]], f'{layer_name} is not present in {layer_pmtiles_path} PMTiles file.'
-                    fcount = [e for e in mdict["tile_stats"]]
+                    # assert layer_name in [vl["id"] for vl in mdict[
+                    #     "vector_layers"]], f'{layer_name} is not present in {layer_pmtiles_path} PMTiles file.'
+                    fcount = dict([(e['layer'], e['count']) for e in mdict["tilestats"]['layers']])
+                    assert layer_name in fcount,  f'{layer_name} is not present in {layer_pmtiles_path} PMTiles file.'
+                    assert fcount[layer_name] > 0, f'No features were converted for layer "{layer_name}"'
                 logger.info(f'Created single layer PMtiles file {layer_pmtiles_path}')
                 # upload layer_pmtiles_path to azure
                 if conn_string is not None:
@@ -311,11 +314,23 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
             with open(pmtiles_path, 'r+b') as f:
                 reader = Reader(MmapSource(f))
                 mdict = reader.metadata()
-                pmtiles_layers = [vl["id"] for vl in mdict["vector_layers"]]
-                inters = set(fgb_layers.keys()).intersection(pmtiles_layers)
-                if not len(inters) == len(fgb_layers):
-                    for e in set(fgb_layers.keys()).difference(pmtiles_layers):
-                        logger.info(f'Layer {e} was not converted to pmtiles in {pmtiles_path}')
+                #TODO add error in append mode
+                fcount = dict([(e['layer'], e['count']) for e in mdict["tilestats"]['layers']])
+                for layer_name in fgb_layers:
+                    if layer_name not in fcount:
+                        logger.error(f'{layer_name} is not present in {pmtiles_path} PMTiles file.')
+                    layer_feature_count = fcount[layer_name]
+                    if layer_feature_count == 0:
+                        logger.error(f'{layer_name} from {pmtiles_path} PMTiles file is empty')
+
+
+
+
+                # pmtiles_layers = [vl["id"] for vl in mdict["vector_layers"]]
+                # inters = set(fgb_layers.keys()).intersection(pmtiles_layers)
+                # if not len(inters) == len(fgb_layers):
+                #     for e in set(fgb_layers.keys()).difference(pmtiles_layers):
+                #         logger.info(f'Layer {e} was not converted to pmtiles in {pmtiles_path}')
             logger.info(f'Created multilayer PMtiles file {pmtiles_path}')
             # upload layer_pmtiles_path to azure
             if conn_string is not None:
