@@ -150,6 +150,7 @@ async def ingest_message():
                                             logger.debug(
                                                 f'Pending future {pending_future.get_name()} has been cancelled')
                                         except Exception as e:
+                                            # deadleter if task_name is ingest task nam e = ingest
                                             raise
                                     root_logger.removeHandler(az_handler)
                             else:

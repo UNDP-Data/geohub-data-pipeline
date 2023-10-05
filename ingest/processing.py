@@ -123,6 +123,7 @@ def dataset2fgb(fgb_dir: str = None,
             # if '_' in lname:raise Exception(f'Simulated exception on {lname}')
             dst_path = os.path.join(fgb_dir, f'{lname}.fgb')
             layer = src_ds.GetLayerByName(lname)
+            original_features = layer.GetFeatureCount()
             layer_srs = layer.GetSpatialRef()
 
             if layer_srs is None:
@@ -132,7 +133,10 @@ def dataset2fgb(fgb_dir: str = None,
             fgb_opts = [
                 '-f FlatGeobuf',
                 '-preserve_fid',
-                '-skipfailures',
+                # '-skipfailures',
+                '-nlt PROMOTE_TO_MULTI',
+                # '-nlt CONVERT_TO_LINEAR',
+                '-makevalid'
 
             ]
             reproject = should_reproject(src_srs=layer_srs, dst_srs=dst_srs)
@@ -148,6 +152,8 @@ def dataset2fgb(fgb_dir: str = None,
                                           callback=gdal_callback,
                                           callback_data=timeout_event
                                           )
+            converted_features = fgb_ds.GetLayerByName(lname).GetFeatureCount()
+            logger.debug(f'Original no of features {original_features} vs converted {converted_features}')
             logger.debug(json.dumps(gdal.Info(fgb_ds, format='json'), indent=4))
             logger.info(f'Converted {lname} from {src_path} into {dst_path}')
             converted_layers[lname] = dst_path
@@ -166,13 +172,14 @@ def dataset2fgb(fgb_dir: str = None,
                     msg += f'layer: {lname}\n'
                     msg += f'gdal_error_message: {error_message}'
                     logger.error(msg)
-                    # upload error blob
-                    blob_name = chop_blob_url(blob_url=blob_url)
-                    container_name, *rest, blob_name = blob_name.split("/")
-                    error_blob_path = f'{"/".join(rest)}/{blob_name}.error'
-                    upload_content_to_blob(content=error_message, connection_string=conn_string,
-                                           container_name=container_name,
-                                           dst_blob_path=error_blob_path)
+                    if conn_string and container_name:
+                        # upload error blob
+                        blob_name = chop_blob_url(blob_url=blob_url)
+                        container_name, *rest, blob_name = blob_name.split("/")
+                        error_blob_path = f'{"/".join(rest)}/{blob_name}.error'
+                        upload_content_to_blob(content=error_message, connection_string=conn_string,
+                                               container_name=container_name,
+                                               dst_blob_path=error_blob_path)
 
 
     return converted_layers
@@ -222,8 +229,10 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
                 with open(layer_pmtiles_path, 'r+b') as f:
                     reader = Reader(MmapSource(f))
                     mdict = reader.metadata()
+                    logger.debug(json.dumps(mdict, indent=2))
                     assert layer_name in [vl["id"] for vl in mdict[
                         "vector_layers"]], f'{layer_name} is not present in {layer_pmtiles_path} PMTiles file.'
+                    fcount = [e for e in mdict["tile_stats"]]
                 logger.info(f'Created single layer PMtiles file {layer_pmtiles_path}')
                 # upload layer_pmtiles_path to azure
                 if conn_string is not None:
