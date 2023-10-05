@@ -41,7 +41,7 @@ def should_reproject(src_srs: osr.SpatialReference = None, dst_srs: osr.SpatialR
     auth_code_func_name = ".".join(
         [osr.SpatialReference.GetAuthorityCode.__module__, osr.SpatialReference.GetAuthorityCode.__name__])
     is_same_func_name = ".".join([osr.SpatialReference.IsSame.__module__, osr.SpatialReference.IsSame.__name__])
-    if int(dst_srs.GetAuthorityCode(None)) == 3857 or int(dst_srs.GetAuthorityCode(None)) == 4326: return False
+    if src_srs.GetAuthorityCode(None) and int(src_srs.GetAuthorityCode(None)) == 4326: return False
     try:
 
         proj_are_equal = int(src_srs.GetAuthorityCode(None)) == int(dst_srs.GetAuthorityCode(None))
