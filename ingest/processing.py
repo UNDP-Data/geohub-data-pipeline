@@ -180,6 +180,7 @@ def dataset2fgb(fgb_dir: str = None,
                         blob_name = chop_blob_url(blob_url=blob_url)
                         container_name, *rest, blob_name = blob_name.split("/")
                         error_blob_path = f'{"/".join(rest)}/{blob_name}.error'
+                        logger.info(f'Uploading error message to {error_blob_path}')
                         upload_content_to_blob(content=error_message, connection_string=conn_string,
                                                container_name=container_name,
                                                dst_blob_path=error_blob_path)
@@ -270,9 +271,11 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
                     logger.error(msg)
                     # upload error file
                     if conn_string is not None:
+
                         blob_name = chop_blob_url(blob_url=blob_url)
                         container_name, *rest, blob_name = blob_name.split("/")
                         error_blob_path = f'{"/".join(rest)}/{blob_name}.error'
+                        logger.info(f'Uploading error message to {error_blob_path}')
                         upload_content_to_blob(content=error_message, connection_string=conn_string,
                                                container_name=container_name,
                                                dst_blob_path=error_blob_path)
@@ -359,6 +362,7 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
                     blob_name = chop_blob_url(blob_url=blob_url)
                     container_name, *rest, blob_name = blob_name.split("/")
                     error_blob_path = f'{"/".join(rest)}/{blob_name}.error'
+                    logger.info(f'Uploading error message to {error_blob_path}')
                     upload_content_to_blob(content=error_message, connection_string=conn_string,
                                            container_name=container_name,
                                            dst_blob_path=error_blob_path)
@@ -491,6 +495,7 @@ def dataset2cog(blob_url=None, src_ds: gdal.Dataset = None, bands: typing.List[i
                     blob_name = chop_blob_url(blob_url=blob_url)
                     container_name, *rest, blob_name = blob_name.split("/")
                     error_blob_path = f'{"/".join(rest)}/{blob_name}.error'
+                    logger.info(f'Uploading error message to {error_blob_path}')
                     upload_content_to_blob(content=msg, connection_string=conn_string,
                                            container_name=container_name,
                                            dst_blob_path=error_blob_path)

@@ -46,6 +46,7 @@ async def upload_timeout_blob(blob_url: str, connection_string=None, ):
                     container=container_name, blob=timeout_blob_path
             ) as blob_client:
                 await blob_client.upload_blob(b"timeout", overwrite=True)
+                logger.info(f'uploaded timeout blob {timeout_blob_path}')
     except (ClientRequestError, ResourceNotFoundError) as e:
         logger.error(f"Failed to upload {timeout_blob_path}: {e}")
 
