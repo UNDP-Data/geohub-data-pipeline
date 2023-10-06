@@ -30,7 +30,7 @@ sblogger.setLevel(logging.WARNING)
 
 setup_env_vars()
 
-INGEST_TIMEOUT = 3600  # 1 hours MAX
+INGEST_TIMEOUT = 3600  #  1 hr MAX
 CONNECTION_STR = os.environ["SERVICE_BUS_CONNECTION_STRING"]
 QUEUE_NAME = os.environ["SERVICE_BUS_QUEUE_NAME"]
 AZ_STORAGE_CONN_STR = os.environ['AZURE_STORAGE_CONNECTION_STRING']
@@ -121,12 +121,12 @@ async def ingest_message():
                                         return_when=asyncio.FIRST_COMPLETED,
                                         timeout=INGEST_TIMEOUT,
                                     )
-                                    if len(done) == 0:
-                                        logger.info(
-                                            f'Ingesting {blob_url} has timed out after {INGEST_TIMEOUT} seconds.')
-                                        timeout_event.set()
-                                        # upload an blob to the /dataset/{datasetname} folder.
-                                        await upload_timeout_blob(blob_url=blob_url, connection_string=AZ_STORAGE_CONN_STR)
+                                    # if len(done) == 0:
+                                    #     logger.info(
+                                    #         f'Ingesting {blob_url} has timed out after {INGEST_TIMEOUT} seconds.')
+                                    #     timeout_event.set()
+                                    #     # upload an blob to the /dataset/{datasetname} folder.
+                                    #     await upload_timeout_blob(blob_url=blob_url, connection_string=AZ_STORAGE_CONN_STR)
 
                                     logger.debug(f'Handling done tasks')
                                     for done_future in done:
@@ -146,12 +146,20 @@ async def ingest_message():
                                         try:
                                             pending_future.cancel()
                                             await pending_future
-                                        except asyncio.CancelledError:
-                                            logger.debug(
-                                                f'Pending future {pending_future.get_name()} has been cancelled')
+
                                         except Exception as e:
-                                            # deadleter if task_name is ingest task nam e = ingest
-                                            raise
+                                            # deadletter if task_name is ingest task: name == ingest
+                                            future_name = pending_future.get_name()
+                                            if future_name == 'ingest':
+                                                with StringIO() as m:
+                                                    print_exc(file=m)
+                                                    em = m.getvalue()
+                                                    logger.error(em)
+                                                    logger.error(f"Pushing message for  {blob_url} to dead-letter "
+                                                                 f"sub-queue")
+                                                    await receiver.dead_letter_message(
+                                                        msg, reason="ingest task error", error_description=em
+                                                    )
                                     root_logger.removeHandler(az_handler)
                             else:
                                 logger.info(
@@ -167,9 +175,9 @@ async def ingest_message():
                             logger.error(em)
                         logger.info(f"Pushing {msg} to dead-letter sub-queue")
 
-                        # await receiver.dead_letter_message(
-                        #     msg, reason="message parse error", error_description=em
-                        # )
+                        await receiver.dead_letter_message(
+                            msg, reason="message parse error", error_description=em
+                        )
                         continue
 
 

@@ -25,14 +25,12 @@ spec:
                   name: ingest-secrets
                   optional: false
         restartPolicy: Never
-
   pollingInterval: 10                         # Optional. Default: 30 seconds
   successfulJobsHistoryLimit: 0               # Optional. Default: 100. How many completed jobs should be kept.
   failedJobsHistoryLimit: 0                   # Optional. Default: 100. How many failed jobs should be kept.
   envSourceContainerName: ingest    # Optional. Default: .spec.JobTargetRef.template.spec.containers[0]
   minReplicaCount: 0                         # Optional. Default: 0
   maxReplicaCount: 3                        # Optional. Default: 100
-
   rollout:
     strategy: gradual                         # Optional. Default: default. Which Rollout Strategy KEDA will use.
     propagationPolicy: foreground             # Optional. Default: background. Kubernetes propagation policy for cleaning up existing jobs during rollout.

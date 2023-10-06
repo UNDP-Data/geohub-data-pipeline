@@ -8,7 +8,7 @@ import time
 from azure.storage.blob.aio import BlobLeaseClient as ABlobLeaseClient, \
     BlobServiceClient as ABlobServiceClient, \
     ContainerClient as AContainerClient
-from azure.storage.blob import ContainerClient, BlobServiceClient
+from azure.storage.blob import ContainerClient, BlobServiceClient, ContentSettings
 import json
 import datetime
 import multiprocessing
@@ -197,8 +197,12 @@ def upload_content_to_blob(content=None, connection_string: str = None, containe
         try:
             with BlobServiceClient.from_connection_string(connection_string) as blob_service_client:
                 with blob_service_client.get_blob_client(container=container_name, blob=dst_blob_path) as blob_client:
-                    blob_client.upload_blob(content, overwrite=overwrite, max_concurrency=max_concurrency)
-            logger.info(f"Successfully wrote content to {dst_blob_path}")
+                    blob_exists = blob_client.exists()
+                    if not blob_exists:
+                        content_settings = ContentSettings(content_type="text/plain")
+                        blob_client.create_append_blob(content_settings=content_settings)
+                    blob_client.append_block(content)
+                    logger.info(f"Successfully wrote content to {dst_blob_path}")
             break
         except Exception as e:
             if attempt == 3:

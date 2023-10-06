@@ -7,7 +7,8 @@ from ingest.config import (
 )
 import logging
 logger = logging.getLogger(__name__)
-
+from io import StringIO
+from traceback import print_exc
 from osgeo import gdal
 def chop_blob_url(blob_url: str) -> str:
     """
@@ -88,11 +89,15 @@ def get_progress(offset_perc=30, src_path:str = None):
     @param src_path:
     @return:
     """
+    emsg = ''
     try:
         ds = gdal.OpenEx(src_path, gdal.OF_VECTOR)
         nvector_layers = ds.GetLayerCount()
         del ds
-    except RuntimeError:
+    except RuntimeError as ve:
+        with StringIO() as m:
+            print_exc(file=m)
+            emsg += m.getvalue()
         nvector_layers = 0
 
     try:
@@ -100,7 +105,10 @@ def get_progress(offset_perc=30, src_path:str = None):
         nraster_bands = ds.RasterCount
         n_subdatasets = len(ds.GetSubDatasets())
         del ds
-    except RuntimeError:
+    except RuntimeError as re:
+        with StringIO() as m:
+            print_exc(file=m)
+            emsg += m.getvalue()
         nraster_bands = n_subdatasets = 0
 
     nchunks = nvector_layers+nraster_bands+n_subdatasets
@@ -108,8 +116,9 @@ def get_progress(offset_perc=30, src_path:str = None):
     logger.info(f'\t{nvector_layers} vector layers')
     logger.info(f'\t{n_subdatasets} subdatasets')
     logger.info(f'\t{nraster_bands} raster bands')
-    if nchunks == 0:return []
-    return compute_progress(offset=offset_perc, nchunks=nchunks)
+    if nchunks == 0:
+        return [], emsg
+    return compute_progress(offset=offset_perc, nchunks=nchunks), emsg
 
 
 
