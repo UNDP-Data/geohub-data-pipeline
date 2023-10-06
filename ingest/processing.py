@@ -173,7 +173,7 @@ def dataset2fgb(fgb_dir: str = None,
                     msg += f'layer: {lname}\n'
                     msg += f'gdal_error_message: {error_message}'
                     logger.error(msg)
-                    if conn_string and container_name:
+                    if conn_string :
                         # upload error blob
                         blob_name = chop_blob_url(blob_url=blob_url)
                         container_name, *rest, blob_name = blob_name.split("/")
