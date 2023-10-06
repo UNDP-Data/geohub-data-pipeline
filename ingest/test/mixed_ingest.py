@@ -31,10 +31,11 @@ if __name__ == '__main__':
     # fpath = '/vsizip/data/featuredataset.gdb.zip'
     fpath = '/data/gdp/Sample1.gpkg'
     fpath = '/data/gdp/Wetlands-WMA 2008-Target-Districts.zip'
+    fpath = '/data/gdp/183_buildings_20231006145355.fgb.zip'
 
 
-    blob_url = 'https://undpgeohub.blob.core.windows.net/userdata/test/CP_CDIS_C_PSY.fgb'
-    blob_url = 'https://undpgeohub.blob.core.windows.net/userdata/3ee8a497fdacc1d7b5905048362b7540/raw/Wetlands-WMA%202008-Target-Districts_20231004111757.zip'
+    blob_url = 'https://undpgeohub.blob.core.windows.net/userdata/a85516c81c0b78d3e89d3f00099b8b15/raw/183_buildings_20231006145355.fgb.zip'
+    #blob_url = 'https://undpgeohub.blob.core.windows.net/userdata/3ee8a497fdacc1d7b5905048362b7540/raw/Wetlands-WMA%202008-Target-Districts_20231004111757.zip'
     # get  a token valid for
     azure_web_pubsub_client_token = get_azurewebsubpub_client_token(minutes_to_expire=60)
     websocket_client = WebPubSubClient(azure_web_pubsub_client_token['url'], )

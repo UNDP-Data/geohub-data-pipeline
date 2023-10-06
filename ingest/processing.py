@@ -154,6 +154,8 @@ def dataset2fgb(fgb_dir: str = None,
                                           callback_data=timeout_event
                                           )
             converted_features = fgb_ds.GetLayerByName(lname).GetFeatureCount()
+            if converted_features > 1e6:
+                logger.info(f'Layer "{lname}" is quite large: {converted_features} features. Processing time can be over 30 min. ')
             logger.debug(f'Original no of features {original_features} vs converted {converted_features}')
             logger.debug(gdal.VectorInfo(fgb_ds, format='json', options='-al -so'))
             logger.info(f'Converted {lname} from {src_path} into {dst_path}')
@@ -236,6 +238,7 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
                     fcount = dict([(e['layer'], e['count']) for e in mdict["tilestats"]['layers']])
                     assert layer_name in fcount,  f'{layer_name} is not present in {layer_pmtiles_path} PMTiles file.'
                     assert fcount[layer_name] > 0, f'No features were converted for layer "{layer_name}"'
+
                 logger.info(f'Created single layer PMtiles file {layer_pmtiles_path}')
                 # upload layer_pmtiles_path to azure
                 if conn_string is not None:
@@ -324,13 +327,6 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
                         logger.error(f'{layer_name} from {pmtiles_path} PMTiles file is empty')
 
 
-
-
-                # pmtiles_layers = [vl["id"] for vl in mdict["vector_layers"]]
-                # inters = set(fgb_layers.keys()).intersection(pmtiles_layers)
-                # if not len(inters) == len(fgb_layers):
-                #     for e in set(fgb_layers.keys()).difference(pmtiles_layers):
-                #         logger.info(f'Layer {e} was not converted to pmtiles in {pmtiles_path}')
             logger.info(f'Created multilayer PMtiles file {pmtiles_path}')
             # upload layer_pmtiles_path to azure
             if conn_string is not None:
@@ -527,10 +523,11 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
         container_name, user, *rest = blob_path.split("/")
 
     try:
-        progressl = get_progress(offset_perc=30, src_path=src_file_path)
+        progressl, gdal_error_message = get_progress(offset_perc=30, src_path=src_file_path)
         if not progressl and websocket_client:
             #upload error file
-            gdal_error_message = f'Datafile {blob_url} is empty'
+            if not gdal_error_message:
+                gdal_error_message = f'Datafile {blob_url} is empty'
             msg = f'gdal_error_message: {gdal_error_message}'
             logger.error(gdal_error_message)
             # upload error blob
