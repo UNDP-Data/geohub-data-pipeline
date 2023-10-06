@@ -24,7 +24,7 @@ spec:
               - secretRef:
                   name: ingest-secrets
                   optional: false
-        restartPolicy: OnFailure
+        restartPolicy: Never
   pollingInterval: 10                         # Optional. Default: 30 seconds
   successfulJobsHistoryLimit: 0               # Optional. Default: 100. How many completed jobs should be kept.
   failedJobsHistoryLimit: 0                   # Optional. Default: 100. How many failed jobs should be kept.
