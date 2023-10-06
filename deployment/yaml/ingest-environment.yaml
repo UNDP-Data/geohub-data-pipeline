@@ -20,6 +20,7 @@ spec:
         containers:
           - name: ingest
             image: undpgeohub.azurecr.io/geohub-data-pipeline:main
+            imagePullPolicy: Allways
             envFrom:
               - secretRef:
                   name: ingest-secrets
@@ -42,6 +43,6 @@ spec:
       queueName: data-upload
       namespace: undpgeohub
       messageCount: "1" # default 5, scale/spin a pod for every message
-      activationMessageCount: "1" # default 0, ensure no pods exist if no messages exist in the queue
+      activationMessageCount: "0" # default 0, ensure no pods exist if no messages exist in the queue
       connectionFromEnv: SERVICE_BUS_CONNECTION_STRING
 
