@@ -4,66 +4,44 @@ kind: Namespace
 metadata:
   name: data
 ---
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: ingest
-  namespace: data
-spec:
-  replicas: 0
-  selector:
-    matchLabels:
-      app: ingest
-  template:
-    metadata:
-      labels:
-        app: ingest
-    spec:
-      containers:
-        - envFrom:
-          - secretRef:
-              name: ingest-secrets
-              optional: false
-          name: ingest
-          image: undpgeohub.azurecr.io/geohub-data-pipeline:main
-          ports:
-            - containerPort: 8000
-          imagePullPolicy: Always
-      restartPolicy: Always
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: ingest-service
-  namespace: data
-spec:
-  selector:
-    app: ingest
-  ports:
-    - name: http
-      port: 80
-      targetPort: 8000
-  type: ClusterIP
----
 apiVersion: keda.sh/v1alpha1
-kind: ScaledObject
+kind: ScaledJob
 metadata:
-  name: azure-servicebus-queue-scaledobject
+  name: ingest-scaledjob
   namespace: data
 spec:
-  scaleTargetRef:
-    kind: Deployment
-    name: ingest
-  pollingInterval: 10
-  cooldownPeriod: 60
-  minReplicaCount:  1
-  maxReplicaCount:  3 
+  jobTargetRef:
+    parallelism: 1
+    completions: 1
+    activeDeadlineSeconds: 600
+    backoffLimit: 5
+    template:
+      spec:
+        containers:
+          - name: ingest
+            image: undpgeohub.azurecr.io/geohub-data-pipeline:main
+            envFrom:
+              - secretRef:
+                  name: ingest-secrets
+                  optional: false
+        restartPolicy: Never
+
+  pollingInterval: 10                         # Optional. Default: 30 seconds
+  successfulJobsHistoryLimit: 0               # Optional. Default: 100. How many completed jobs should be kept.
+  failedJobsHistoryLimit: 0                   # Optional. Default: 100. How many failed jobs should be kept.
+  envSourceContainerName: ingest    # Optional. Default: .spec.JobTargetRef.template.spec.containers[0]
+  minReplicaCount: 0                         # Optional. Default: 0
+  maxReplicaCount: 3                        # Optional. Default: 100
+
+  rollout:
+    strategy: gradual                         # Optional. Default: default. Which Rollout Strategy KEDA will use.
+    propagationPolicy: foreground             # Optional. Default: background. Kubernetes propagation policy for cleaning up existing jobs during rollout.
   triggers:
   - type: azure-servicebus
     metadata:
       queueName: data-upload
       namespace: undpgeohub
-      messageCount: "5" # default 5
+      messageCount: "2" # default 5
       activationMessageCount: "1"
       connectionFromEnv: SERVICE_BUS_CONNECTION_STRING
 
