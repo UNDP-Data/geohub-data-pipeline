@@ -24,17 +24,17 @@ if __name__ == '__main__':
     logger.addHandler(sthandler)
     logger.name = __name__
 
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.INFO)
     fpath = '/data/gdp/File_GeoHub_Geodatabase.gdb.zip'
     #fpath = '/data/gdp/a_20231003072549.zip'
 
     # fpath = '/vsizip/data/featuredataset.gdb.zip'
     fpath = '/data/gdp/Sample1.gpkg'
     fpath = '/data/gdp/Wetlands-WMA 2008-Target-Districts.zip'
-    fpath = '/data/gdp/183_buildings_20231006145355.fgb.zip'
+    fpath = '/data/gdp/wasac-rwasom-2-data-revised_20230912143433.gpkg.zip'
 
 
-    blob_url = 'https://undpgeohub.blob.core.windows.net/userdata/a85516c81c0b78d3e89d3f00099b8b15/raw/183_buildings_20231006145355.fgb.zip'
+    blob_url = 'https://undpgeohub.blob.core.windows.net/userdata/9426cffc00b069908b2868935d1f3e90/raw/wasac-rwasom-2-data-revised_20230912143433.gpkg.zip'
     #blob_url = 'https://undpgeohub.blob.core.windows.net/userdata/3ee8a497fdacc1d7b5905048362b7540/raw/Wetlands-WMA%202008-Target-Districts_20231004111757.zip'
     # get  a token valid for
     azure_web_pubsub_client_token = get_azurewebsubpub_client_token(minutes_to_expire=60)
@@ -46,8 +46,8 @@ if __name__ == '__main__':
 
         process_geo_file(blob_url=blob_url,
                          src_file_path=fpath,
-                         #conn_string=os.environ.get('AZURE_STORAGE_CONNECTION_STRING'),
-                         conn_string=None,
+                         conn_string=os.environ.get('AZURE_STORAGE_CONNECTION_STRING'),
+                         #conn_string=None,
                          timeout_event=te, join_vector_tiles=False, websocket_client=websocket_client)
 
 
