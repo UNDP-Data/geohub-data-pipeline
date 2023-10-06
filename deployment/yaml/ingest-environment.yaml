@@ -34,12 +34,14 @@ spec:
   rollout:
     strategy: gradual                         # Optional. Default: default. Which Rollout Strategy KEDA will use.
     propagationPolicy: foreground             # Optional. Default: background. Kubernetes propagation policy for cleaning up existing jobs during rollout.
+  scalingStrategy:
+    strategy: default
   triggers:
   - type: azure-servicebus
     metadata:
       queueName: data-upload
       namespace: undpgeohub
-      messageCount: "2" # default 5
-      activationMessageCount: "1"
+      messageCount: "1" # default 5, scale/spin a pod for every message
+      activationMessageCount: "1" # default 0, ensure no pods exist if no messages exist in the queue
       connectionFromEnv: SERVICE_BUS_CONNECTION_STRING
 

@@ -12,7 +12,7 @@ if __name__ == '__main__':
     logger = logging.getLogger()
     sthandler = logging.StreamHandler()
     sthandler.setFormatter(
-        logging.Formatter('%(asctime)s-%(filename)s:%(funcName)s:%(lineno)d:%(levelname)s:%(message)s',
+        logging.Formatter('%(asctime)s-%(module)s-%(filename)s:%(funcName)s:%(lineno)d:%(levelname)s:%(message)s',
                           "%Y-%m-%d %H:%M:%S"))
     # silence azure logger
     azlogger = logging.getLogger("azure.core.pipeline.policies.http_logging_policy")
@@ -24,7 +24,7 @@ if __name__ == '__main__':
     logger.addHandler(sthandler)
     logger.name = __name__
 
-    logger.setLevel(logging.INFO)
+    logger.setLevel('INFO')
     fpath = '/data/gdp/File_GeoHub_Geodatabase.gdb.zip'
     #fpath = '/data/gdp/a_20231003072549.zip'
 
@@ -37,19 +37,19 @@ if __name__ == '__main__':
     blob_url = 'https://undpgeohub.blob.core.windows.net/userdata/9426cffc00b069908b2868935d1f3e90/raw/wasac-rwasom-2-data-revised_20230912143433.gpkg.zip'
     #blob_url = 'https://undpgeohub.blob.core.windows.net/userdata/3ee8a497fdacc1d7b5905048362b7540/raw/Wetlands-WMA%202008-Target-Districts_20231004111757.zip'
     # get  a token valid for
-    azure_web_pubsub_client_token = get_azurewebsubpub_client_token(minutes_to_expire=60)
-    websocket_client = WebPubSubClient(azure_web_pubsub_client_token['url'], )
-    with websocket_client:
-        websocket_client.join_group(AZURE_WEBPUBSUB_GROUP_NAME)
+    # azure_web_pubsub_client_token = get_azurewebsubpub_client_token(minutes_to_expire=60)
+    # websocket_client = WebPubSubClient(azure_web_pubsub_client_token['url'], )
+    # with websocket_client:
+    #     websocket_client.join_group(AZURE_WEBPUBSUB_GROUP_NAME)
+    #
+    #     te = Event()
+    #
+    #     process_geo_file(blob_url=blob_url,
+    #                      src_file_path=fpath,
+    #                      conn_string=os.environ.get('AZURE_STORAGE_CONNECTION_STRING'),
+    #                      #conn_string=None,
+    #                      timeout_event=te, join_vector_tiles=False, websocket_client=websocket_client)
 
-        te = Event()
 
-        process_geo_file(blob_url=blob_url,
-                         src_file_path=fpath,
-                         conn_string=os.environ.get('AZURE_STORAGE_CONNECTION_STRING'),
-                         #conn_string=None,
-                         timeout_event=te, join_vector_tiles=False, websocket_client=websocket_client)
-
-
-    #asyncio.run(ingest_message())
+    asyncio.run(ingest_message())
 
