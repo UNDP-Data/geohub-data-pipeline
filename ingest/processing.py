@@ -537,7 +537,7 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
             stage = 'processed'
             if timeout_event.is_set():
                 gdal_error_message = f'Datafile {blob_url} has timed out or was cancelled'
-                stage  = 'cancelled'
+                stage  = 'Cancelled'
             msg = f'gdal_error_message: {gdal_error_message}'
 
             logger.error(gdal_error_message)
@@ -652,7 +652,7 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
                                        container_name=container_name,
                                        dst_blob_path=error_blob_path)
 
-            payload = dict(user=user, url=blob_url, stage='cancelled', progress=100)
+            payload = dict(user=user, url=blob_url, stage='Cancelled', progress=100)
 
             websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                            content=json.dumps(payload),
@@ -711,7 +711,7 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
                                        container_name=container_name,
                                        dst_blob_path=error_blob_path)
 
-            payload = dict(user=user, url=blob_url, stage='processed', progress=100)
+            payload = dict(user=user, url=blob_url, stage='Cancelled', progress=100)
 
             websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                            content=json.dumps(payload),
