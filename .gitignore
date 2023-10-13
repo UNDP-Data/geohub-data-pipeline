@@ -1,6 +1,7 @@
 .vscode
 .idea
 Pipfile
+Pipfile.lock
 .env
 *sample.dat
 test.tif

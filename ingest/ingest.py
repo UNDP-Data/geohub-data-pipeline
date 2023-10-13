@@ -137,11 +137,16 @@ async def ingest_message():
                                         upload_content_to_blob(content=error_message, connection_string=CONNECTION_STR,
                                                                container_name=container_name,
                                                                dst_blob_path=error_blob_path)
-                                        payload = dict(user=user, url=blob_url, stage='processed', progress=100)
+                                        payload = dict(user=user, url=blob_url, stage='Cancelled', progress=100)
 
                                         websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                                                        content=json.dumps(payload),
                                                                        data_type=WebPubSubDataType.JSON)
+                                        container_rel_blob_path = os.path.join(user, *rest, blob_name)
+                                        set_blob_metadata(connection_string=CONNECTION_STR, container_name=container_name,
+                                                          dst_blob_path=container_rel_blob_path,
+                                                          metadata={'stage': payload['stage'],
+                                                                    'progress': payload['progress']})
 
 
                                     logger.debug(f'Handling done tasks')
