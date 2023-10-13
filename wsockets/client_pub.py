@@ -1,3 +1,4 @@
+import json
 import os
 import time
 import os
@@ -29,11 +30,12 @@ if __name__ == '__main__':
     # client.on("disconnected", lambda e: print(f"Connection disconnected: {e.message}"))
     #client.on("stopped", lambda: handle_stop(client))
     print('first')
+    message = {"user": "9426cffc00b069908b2868935d1f3e90", "url": "https://undpgeohub.blob.core.windows.net/userdata/9426cffc00b069908b2868935d1f3e90/raw/wasac-rwasom-2-data-revised_20230912143433.gpkg.zip", "cancel": True}
     with client:
         # A client needs to join the group it wishes to receive messages from
         client.join_group(group_name)
 
-        client.send_to_group(group_name, content=f"I am here ", data_type="text")
+        client.send_to_group(group_name, content=json.dumps(message), data_type="json")
 
 
     #client.send_to_group(group_name, content=f"we are done", data_type="text")

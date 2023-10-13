@@ -15,7 +15,7 @@ from ingest.utils import (
     get_local_cog_path,
     get_azure_blob_path, chop_blob_url, get_progress
 )
-from ingest.azblob import upload_blob, upload_content_to_blob, upload_ingesting_blob
+from ingest.azblob import upload_blob, upload_content_to_blob, upload_ingesting_blob, set_blob_metadata
 from traceback import print_exc
 
 gdal.UseExceptions()
@@ -525,7 +525,8 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
         assert os.path.exists(dst_directory), f'dst_directory={dst_directory} does not exist'
     else:
         blob_path = chop_blob_url(blob_url)
-        container_name, user, *rest = blob_path.split("/")
+        container_name, user, *rest, blob_name = blob_path.split("/")
+        container_rel_blob_path = os.path.join(user, *rest, blob_name)
 
     try:
         progressl, gdal_error_message = get_progress(offset_perc=30, src_path=src_file_path)
@@ -533,13 +534,16 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
             #upload error file
             if not gdal_error_message:
                 gdal_error_message = f'Datafile {blob_url} is empty'
+            stage = 'processed'
+            if timeout_event.is_set():
+                gdal_error_message = f'Datafile {blob_url} has timed out or was cancelled'
+                stage  = 'cancelled'
             msg = f'gdal_error_message: {gdal_error_message}'
+
             logger.error(gdal_error_message)
             # upload error blob
             if conn_string is not None:
-                blob_name = chop_blob_url(blob_url=blob_url)
-                container_name, *rest, blob_name = blob_name.split("/")
-                error_blob_path = f'{"/".join(rest)}/{blob_name}.error'
+                error_blob_path = f'{"/".join([user]+rest)}/{blob_name}.error'
                 upload_content_to_blob(content=msg, connection_string=conn_string,
                                        container_name=container_name,
                                        dst_blob_path=error_blob_path)
@@ -549,7 +553,13 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
             websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                            content=json.dumps(payload),
                                            data_type=WebPubSubDataType.JSON)
+
+            set_blob_metadata(connection_string=conn_string, container_name=container_name,
+                              dst_blob_path=container_rel_blob_path,
+                              metadata={'stage': payload['stage'], 'progress': payload['progress']})
             return
+
+
 
         progress_index = 0
         # handle vectors first
@@ -585,6 +595,11 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
                             websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                                                content=json.dumps(payload),
                                                                data_type=WebPubSubDataType.JSON)
+
+                            set_blob_metadata(connection_string=conn_string, container_name=container_name,
+                                              dst_blob_path=container_rel_blob_path,
+                                              metadata={'stage': payload['stage'], 'progress': payload['progress']})
+
                             progress_index += 1
                 else:
                     logger.info(f'Ingesting all vector layers into one multilayer PMtiles file')
@@ -601,6 +616,10 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
                         websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                                            content=json.dumps(payload),
                                                            data_type=WebPubSubDataType.JSON)
+
+                        set_blob_metadata(connection_string=conn_string, container_name=container_name,
+                                          dst_blob_path=container_rel_blob_path,
+                                          metadata={'stage': payload['stage'], 'progress': payload['progress']})
                         progress_index += 1
             else:
                 logger.info(f'{src_file_path} contains {nvector_layers} vector layers')
@@ -625,6 +644,25 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
 
         # Driver.getMetadataItem(gdal.DCAP_SUBTADASETS) is not reliable so it is better to try
         subdatasets = rdataset.GetSubDatasets()
+        if timeout_event.is_set():
+            if conn_string is not None:
+                error_blob_path = f'{"/".join([user]+rest)}/{blob_name}.error'
+                upload_content_to_blob(content=f'Datafile {blob_url} has timed out or was cancelled',
+                                       connection_string=conn_string,
+                                       container_name=container_name,
+                                       dst_blob_path=error_blob_path)
+
+            payload = dict(user=user, url=blob_url, stage='cancelled', progress=100)
+
+            websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
+                                           content=json.dumps(payload),
+                                           data_type=WebPubSubDataType.JSON)
+
+            set_blob_metadata(connection_string=conn_string, container_name=container_name,
+                              dst_blob_path=container_rel_blob_path,
+                              metadata={'stage': payload['stage'], 'progress': payload['progress']})
+            return
+
         if subdatasets:
             n_subdatasets = len(subdatasets)
             for subdataset_index, sdb in enumerate(subdatasets, start=1):
@@ -659,9 +697,29 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
                     websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                                        content=json.dumps(payload),
                                                        data_type=WebPubSubDataType.JSON)
+                    set_blob_metadata(connection_string=conn_string, container_name=container_name,
+                                      dst_blob_path=container_rel_blob_path,
+                                      metadata={'stage': payload['stage'], 'progress': payload['progress']})
+
                     progress_index += 1
 
+        if timeout_event.is_set():
+            if conn_string is not None:
+                error_blob_path = f'{"/".join([user]+rest)}/{blob_name}.error'
+                upload_content_to_blob(content=f'Datafile {blob_url} has timed out or was cancelled',
+                                       connection_string=conn_string,
+                                       container_name=container_name,
+                                       dst_blob_path=error_blob_path)
 
+            payload = dict(user=user, url=blob_url, stage='processed', progress=100)
+
+            websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
+                                           content=json.dumps(payload),
+                                           data_type=WebPubSubDataType.JSON)
+            set_blob_metadata(connection_string=conn_string, container_name=container_name,
+                              dst_blob_path=container_rel_blob_path,
+                              metadata={'stage': payload['stage'], 'progress': payload['progress']})
+            return
 
         if nraster_bands:  # raster data is located at root
 
@@ -683,6 +741,9 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
                     websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                                        content=json.dumps(payload),
                                                        data_type=WebPubSubDataType.JSON)
+                    set_blob_metadata(connection_string=conn_string, container_name=container_name,
+                                      dst_blob_path=container_rel_blob_path,
+                                      metadata={'stage': payload['stage'], 'progress': payload['progress']})
                     progress_index+=1
 
             else:
@@ -697,10 +758,13 @@ def process_geo_file(src_file_path: str = None, blob_url=None, join_vector_tiles
                         progrs = progressl[progress_index]
                         stage = 'processing' if progrs < 100 else 'processed'
                         payload = dict(user=user, url=blob_url, stage=stage, progress=progrs)
-                        #with websocket_client:
+
                         websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                                            content=json.dumps(payload),
                                                            data_type=WebPubSubDataType.JSON)
+                        set_blob_metadata(connection_string=conn_string, container_name=container_name,
+                                          dst_blob_path=container_rel_blob_path,
+                                          metadata={'stage': payload['stage'], 'progress': payload['progress']})
                     progress_index += 1
 
         del rdataset

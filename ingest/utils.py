@@ -1,4 +1,6 @@
+import multiprocessing
 import os
+import json
 from urllib.parse import urlparse
 from ingest.config import (
     datasets_folder,
@@ -120,5 +122,12 @@ def get_progress(offset_perc=30, src_path:str = None):
         return [], emsg
     return compute_progress(offset=offset_perc, nchunks=nchunks), emsg
 
+
+def cancel_processing(event=None, blob_url:str=None, cancel_event:multiprocessing.Event=None):
+    message_data = event.data
+    if isinstance(message_data, dict) and 'user' in message_data and 'url' in message_data and 'cancel' in message_data:
+        if blob_url == message_data['url'] and message_data['user'] in blob_url and message_data['cancel'] is True:
+            logger.info(f'Received message to cancel processing for {blob_url} {message_data}')
+            cancel_event.set()
 
 

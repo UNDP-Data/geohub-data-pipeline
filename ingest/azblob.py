@@ -213,6 +213,28 @@ def upload_content_to_blob(content=None, connection_string: str = None, containe
             continue
 
 
+def set_blob_metadata(connection_string: str = None, container_name: str = None,
+                dst_blob_path: str = None, metadata:dict=None):
+    for attempt in range(1, 4):
+        try:
+            with BlobServiceClient.from_connection_string(connection_string) as blob_service_client:
+                with blob_service_client.get_blob_client(container=container_name, blob=dst_blob_path) as blob_client:
+                    # Retrieve existing metadata, if desired
+                    blob_metadata = blob_client.get_blob_properties().metadata
+                    blob_metadata.update({str(key): str(value) for key, value in metadata.items()})
+                    # Set metadata on the blob
+                    blob_client.set_blob_metadata(metadata=blob_metadata)
+                    logger.info(f"Successfully updated metadata for {dst_blob_path}")
+
+            break
+        except Exception as e:
+            if attempt == 3:
+                logger.info(f'Failed to update metadata for {dst_blob_path} in attempt no {attempt}. {e}')
+                raise e
+            logger.info(f'Failed to update metadata for {dst_blob_path} in attempt no {attempt}. Trying again... ')
+            continue
+
+
 def upload_blob(src_path: str = None, connection_string: str = None, container_name: str = None,
                 dst_blob_path: str = None, overwrite: bool = True, max_concurrency: int = 8) -> None:
     """
