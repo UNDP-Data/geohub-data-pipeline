@@ -3,7 +3,8 @@ import asyncio
 from multiprocessing import Event
 from ingest.config import raw_folder, setup_env_vars, get_azurewebsubpub_client_token, AZURE_WEBPUBSUB_GROUP_NAME
 from ingest.processing import process_geo_file
-from ingest.ingest import ingest_message
+from ingest.ingest import ingest_message, sync_ingest
+from ingest.utils import cancel_processing
 import logging
 from azure.messaging.webpubsubclient import WebPubSubClient
 from azure.messaging.webpubsubclient.models import WebPubSubDataType
@@ -31,25 +32,31 @@ if __name__ == '__main__':
     # fpath = '/vsizip/data/featuredataset.gdb.zip'
     fpath = '/data/gdp/Sample1.gpkg'
     fpath = '/data/gdp/Wetlands-WMA 2008-Target-Districts.zip'
-    fpath = '/data/gdp/wasac-rwasom-2-data-revised_20230912143433.gpkg.zip'
+    fpath = '/data/gdp/wasac-rwasom-2-data-revised_testing.gpkg.zip'
 
 
-    blob_url = 'https://undpgeohub.blob.core.windows.net/userdata/9426cffc00b069908b2868935d1f3e90/raw/wasac-rwasom-2-data-revised_20230912143433.gpkg.zip'
+    blob_url = 'https://undpgeohub.blob.core.windows.net/userdata/9426cffc00b069908b2868935d1f3e90/raw/wasac-rwasom-2-data-revised_testing.gpkg.zip'
     #blob_url = 'https://undpgeohub.blob.core.windows.net/userdata/3ee8a497fdacc1d7b5905048362b7540/raw/Wetlands-WMA%202008-Target-Districts_20231004111757.zip'
-    # get  a token valid for
-    # azure_web_pubsub_client_token = get_azurewebsubpub_client_token(minutes_to_expire=60)
-    # websocket_client = WebPubSubClient(azure_web_pubsub_client_token['url'], )
-    # with websocket_client:
-    #     websocket_client.join_group(AZURE_WEBPUBSUB_GROUP_NAME)
-    #
-    #     te = Event()
-    #
-    #     process_geo_file(blob_url=blob_url,
-    #                      src_file_path=fpath,
-    #                      conn_string=os.environ.get('AZURE_STORAGE_CONNECTION_STRING'),
-    #                      #conn_string=None,
-    #                      timeout_event=te, join_vector_tiles=False, websocket_client=websocket_client)
+    #get  a token valid for
+    azure_web_pubsub_client_token = get_azurewebsubpub_client_token(minutes_to_expire=60)
+    websocket_client = WebPubSubClient(azure_web_pubsub_client_token['url'], )
+    te = Event()
+    websocket_client.on(event="group-message",
+                        listener=lambda e: cancel_processing(event=e, blob_url=blob_url, cancel_event=te))
+    with websocket_client:
+        websocket_client.join_group(AZURE_WEBPUBSUB_GROUP_NAME)
 
 
-    asyncio.run(ingest_message())
+
+        sync_ingest(
+                    blob_url=blob_url,
+                    conn_string=os.environ.get('AZURE_STORAGE_CONNECTION_STRING'),
+                    #conn_string=None,
+                    timeout_event=te,
+                    join_vector_tiles=False,
+                    websocket_client=websocket_client
+        )
+
+
+    #asyncio.run(ingest_message())
 

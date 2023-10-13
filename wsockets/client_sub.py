@@ -4,10 +4,11 @@ from azure.messaging.webpubsubclient import WebPubSubClient
 from azure.messaging.webpubsubservice import WebPubSubServiceClient
 import os
 def handle_message(e):
-    json_data = json.loads(e.data)
-    _, file_name = os.path.split(json_data['url'])
-    name, *ext = file_name.split(os.extsep)
-    print(file_name,json_data['progress'], json_data.get('layer'))
+    # json_data = json.loads(e.data)
+    # _, file_name = os.path.split(json_data['url'])
+    # name, *ext = file_name.split(os.extsep)
+    print(e.data)
+    print(type(e.data))
 
 if __name__ == '__main__':
     AZURE_WEBPUBSUB_CONNECTION_STRING = os.environ.get('AZURE_WEBPUBSUB_CONNECTION_STRING')

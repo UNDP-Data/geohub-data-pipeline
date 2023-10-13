@@ -15,11 +15,13 @@ from ingest.azblob import (
     handle_lock,
     chop_blob_url,
     download_blob_sync,
-    upload_timeout_blob
+    upload_content_to_blob,
+    set_blob_metadata
 )
+from ingest.utils import cancel_processing
 from azure.messaging.webpubsubclient import WebPubSubClient
 from azure.messaging.webpubsubclient.models import WebPubSubDataType
-from ingest.utils import prepare_arch_path
+
 logger = logging.getLogger(__name__)
 
 # silence azure logger
@@ -97,6 +99,8 @@ async def ingest_message():
                                 #get  a token valid for
                                 azure_web_pubsub_client_token = get_azurewebsubpub_client_token(minutes_to_expire=INGEST_TIMEOUT//60)
                                 websocket_client = WebPubSubClient(azure_web_pubsub_client_token['url'], )
+                                timeout_event = multiprocessing.Event()
+                                websocket_client.on(event="group-message",listener=lambda e:cancel_processing(event=e,blob_url=blob_url,cancel_event=timeout_event))
                                 with websocket_client:
                                     websocket_client.join_group(AZURE_WEBPUBSUB_GROUP_NAME)
                                     # create and attach  azure log handler to the root logger
@@ -105,7 +109,7 @@ async def ingest_message():
                                                                          blob_url=blob_url,
                                                                          log_level=root_logger.level)
                                     root_logger.addHandler(az_handler)
-                                    timeout_event = multiprocessing.Event()
+
                                     ingest_task = asyncio.ensure_future(
                                         asyncio.to_thread(sync_ingest, blob_url=blob_url, timeout_event=timeout_event,
                                                           conn_string=AZ_STORAGE_CONN_STR, websocket_client=websocket_client, join_vector_tiles=join_vector_tiles)
@@ -122,11 +126,23 @@ async def ingest_message():
                                         timeout=INGEST_TIMEOUT,
                                     )
                                     if len(done) == 0:
-                                        logger.info(
-                                            f'Ingesting {blob_url} has timed out after {INGEST_TIMEOUT} seconds.')
+                                        error_message = f'Ingesting {blob_url} has timed out after {INGEST_TIMEOUT} seconds.'
+                                        logger.error(error_message)
                                         timeout_event.set()
                                         # upload an blob to the /dataset/{datasetname} folder.
-                                        await upload_timeout_blob(blob_url=blob_url, connection_string=AZ_STORAGE_CONN_STR)
+                                        blob_path = chop_blob_url(blob_url=blob_url)
+                                        container_name, user, *rest, blob_name = blob_path.split("/")
+                                        error_blob_path = f'{"/".join([user]+rest)}/{blob_name}.error'
+                                        logger.info(f'Uploading error message to {error_blob_path}')
+                                        upload_content_to_blob(content=error_message, connection_string=CONNECTION_STR,
+                                                               container_name=container_name,
+                                                               dst_blob_path=error_blob_path)
+                                        payload = dict(user=user, url=blob_url, stage='processed', progress=100)
+
+                                        websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
+                                                                       content=json.dumps(payload),
+                                                                       data_type=WebPubSubDataType.JSON)
+
 
                                     logger.debug(f'Handling done tasks')
                                     for done_future in done:
@@ -235,6 +251,9 @@ def sync_ingest(blob_url: str = None, token: str = None, timeout_event: multipro
                 websocket_client.send_to_group(AZURE_WEBPUBSUB_GROUP_NAME,
                                                content=json.dumps(payload),
                                                 data_type=WebPubSubDataType.JSON)
+                container_rel_blob_path = os.path.join(user, *rest)
+                set_blob_metadata(connection_string=conn_string, container_name=container_name,dst_blob_path=container_rel_blob_path,
+                                  metadata={'stage':payload['stage'], 'progress':payload['progress']})
             if not temp_data_file:
                 raise Exception(f'Undetected exception has occurred while downloading {blob_path}')
             process_geo_file(blob_url=blob_url, src_file_path=temp_data_file, join_vector_tiles=join_vector_tiles,
