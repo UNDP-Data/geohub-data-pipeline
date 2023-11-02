@@ -33,6 +33,7 @@ if __name__ == '__main__':
     fpath = '/data/gdp/Sample1.gpkg'
     fpath = '/data/gdp/Wetlands-WMA 2008-Target-Districts.zip'
     fpath = '/data/gdp/wasac-rwasom-2-data-revised_testing.gpkg.zip'
+    fpath = '/data/gdp/nested.zip'
 
 
     blob_url = 'https://undpgeohub.blob.core.windows.net/userdata/9426cffc00b069908b2868935d1f3e90/raw/wasac-rwasom-2-data-revised_testing.gpkg.zip'
@@ -50,7 +51,7 @@ if __name__ == '__main__':
 
         sync_ingest(
                     blob_url=blob_url,
-                    conn_string=os.environ.get('AZURE_STORAGE_CONNECTION_STRING'),
+                    #conn_string=os.environ.get('AZURE_STORAGE_CONNECTION_STRING'),
                     #conn_string=None,
                     timeout_event=te,
                     join_vector_tiles=False,
