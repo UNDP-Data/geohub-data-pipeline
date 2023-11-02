@@ -135,7 +135,6 @@ def dataset2fgb(fgb_dir: str = None,
                 '-preserve_fid',
                 # '-skipfailures',
                 '-nlt PROMOTE_TO_MULTI',
-                # '-nlt CONVERT_TO_LINEAR',
                 '-makevalid'
 
             ]
@@ -161,6 +160,20 @@ def dataset2fgb(fgb_dir: str = None,
             logger.info(f'Converted {lname} from {src_path} into {dst_path}')
             converted_layers[lname] = dst_path
             del fgb_ds
+            #issue a warning in case the out features are 0 or there is
+            if converted_features == 0 or converted_features!= original_features and conn_string:
+                # upload error blob
+                blob_name = chop_blob_url(blob_url=blob_url)
+                container_name, *rest, blob_name = blob_name.split("/")
+                error_blob_path = f'{"/".join(rest)}/{blob_name}.error'
+                logger.info(f'Uploading error message to {error_blob_path}')
+                error_message = f'There could be issues with layer "{lname}".\nOriginal number of features/geometries ={original_features} while converted={converted_features}'
+                upload_content_to_blob(content=error_message, connection_string=conn_string,
+                                       container_name=container_name,
+                                       dst_blob_path=error_blob_path)
+
+
+
         except (RuntimeError, Exception) as re:
             if 'user terminated' in str(re):
                 logger.info(f'Conversion of {lname} from {src_path} to FlatGeobuf has timed out')
