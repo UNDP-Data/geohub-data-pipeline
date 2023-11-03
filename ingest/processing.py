@@ -133,7 +133,7 @@ def dataset2fgb(fgb_dir: str = None,
             fgb_opts = [
                 '-f FlatGeobuf',
                 '-preserve_fid',
-                # '-skipfailures',
+                '-skipfailures',
                 '-nlt PROMOTE_TO_MULTI',
                 '-makevalid'
 
