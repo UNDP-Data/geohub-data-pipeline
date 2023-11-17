@@ -1,7 +1,7 @@
 # Build felt/tippecanoe
 # Dockerfile from https://github.com/felt/tippecanoe/blob/main/Dockerfile
 # add "--platform=linux/x86_64" for M1 Mac
-FROM --platform=linux/amd64 ubuntu:22.04 AS tippecanoe-builder
+FROM ubuntu:22.04 AS tippecanoe-builder
 
 RUN apt-get update \
   && apt-get -y install build-essential libsqlite3-dev zlib1g-dev git
@@ -12,7 +12,7 @@ RUN make
 
 # Build production docker image
 # add "--platform=linux/amd64" for M1 Mac
-FROM --platform=linux/amd64 ghcr.io/osgeo/gdal:ubuntu-small-latest
+FROM ghcr.io/osgeo/gdal:ubuntu-small-latest
 
 ENV TZ=Etc/UTC
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
