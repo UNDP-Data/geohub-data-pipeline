@@ -3,8 +3,8 @@ name: Docker Image Deployment CICD
 on:
   push:
     branches: [ "main" ]
+    tags: ['v*']
   pull_request:
-    #branches: [ "main" ]
 env:
   IMAGE_NAME: ${{ github.event.repository.name }}
 jobs:
@@ -32,41 +32,6 @@ jobs:
       uses: docker/build-push-action@v3
       with:
         context: .
-        push: ${{ github.ref == 'refs/heads/main'}}
+        push: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')}}
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    if: ${{ github.ref == 'refs/heads/main'}}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-      - name: Deploy ingest to kubernetes
-        uses: actions-hub/kubectl@master
-        env:
-          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
-          SERVICE_BUS_CONNECTION_STRING: ${{ secrets.SERVICE_BUS_CONNECTION_STRING }}
-        with:
-          args: apply -f deployment/yaml/ingest-environment.yaml
-      - name: Delete Secrets
-        uses: actions-hub/kubectl@master
-        env:
-          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
-        with:
-          args: delete secret ingest-secrets --ignore-not-found -n ${{ secrets.DEPLOYMENT_NAMESPACE }}
-      - name: Create Secrets
-        uses: actions-hub/kubectl@master
-        env:
-          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
-        with:
-          args: create secret generic ingest-secrets --from-literal=AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }} --from-literal=SERVICE_BUS_CONNECTION_STRING=${{ secrets.SERVICE_BUS_CONNECTION_STRING }}  -n ${{ secrets.DEPLOYMENT_NAMESPACE }} --from-literal=AZURE_WEBPUBSUB_CONNECTION_STRING=${{ secrets.AZURE_WEBPUBSUB_CONNECTION_STRING }}
-
-#      - name: Rollout new image
-#        uses: actions-hub/kubectl@master
-#        env:
-#          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
-#        with:
-#          args: rollout restart deployment/${{ secrets.DEPLOYMENT_NAME }} -n ${{ secrets.DEPLOYMENT_NAMESPACE }}
-    

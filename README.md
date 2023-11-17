@@ -55,7 +55,7 @@ To test the app locally, you can use Docker Compose to build and run the app in 
 
 - `AZURE_STORAGE_CONNECTION_STRING`
 - `SERVICE_BUS_CONNECTION_STRING`
-- `SERVICE_BUS_QUEUE_NAME`
+- `AZURE_WEBPUBSUB_CONNECTION_STRING`
 
 4. Build and run the app using Docker Compose.
 
