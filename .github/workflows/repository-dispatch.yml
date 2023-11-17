@@ -1,0 +1,20 @@
+name: Release Draft
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: dispatch event to GeoHub repo to create release PR
+      uses: peter-evans/repository-dispatch@v1
+      with:
+        repository: undp-data/geohub
+        token: ${{ secrets.GITHUB_PERSONAL_TOKEN }}
+        event-type: bump-pipeline-version
