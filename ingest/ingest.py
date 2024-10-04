@@ -20,7 +20,7 @@ from ingest.azblob import (
 )
 from ingest.utils import cancel_processing
 from azure.messaging.webpubsubclient import WebPubSubClient
-from azure.messaging.webpubsubclient.models import WebPubSubDataType
+from azure.messaging.webpubsubclient.models import WebPubSubDataType, CallbackType
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +100,10 @@ async def ingest_message():
                                 azure_web_pubsub_client_token = get_azurewebsubpub_client_token(minutes_to_expire=INGEST_TIMEOUT//60)
                                 websocket_client = WebPubSubClient(azure_web_pubsub_client_token['url'], )
                                 timeout_event = multiprocessing.Event()
-                                websocket_client.on(event="group-message",listener=lambda e:cancel_processing(event=e,blob_url=blob_url,cancel_event=timeout_event))
+                                websocket_client.subscribe(
+                                    CallbackType.GROUP_MESSAGE,
+                                    listener=lambda e:cancel_processing(event=e,blob_url=blob_url,cancel_event=timeout_event)
+                                )
                                 with websocket_client:
                                     websocket_client.join_group(AZURE_WEBPUBSUB_GROUP_NAME)
                                     # create and attach  azure log handler to the root logger
