@@ -262,6 +262,11 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
                     upload_blob(src_path=layer_pmtiles_path, connection_string=conn_string,
                                 container_name=container_name,
                                 dst_blob_path=pmtiles_blob_path, )
+
+                    upload_blob(src_path=fgb_layer_path, connection_string=conn_string,
+                                container_name=container_name,
+                                dst_blob_path=f"{pmtiles_blob_path}.fgb", )
+
                     upload_ingesting_blob(pmtiles_blob_path, container_name=container_name,
                                           connection_string=conn_string)
 
@@ -351,6 +356,11 @@ def fgb2pmtiles(blob_url=None, fgb_layers: typing.Dict[str, str] = None, pmtiles
                 logger.info(f'Uploading {pmtiles_path} to {pmtiles_blob_path}')
                 upload_blob(src_path=pmtiles_path, connection_string=conn_string, container_name=container_name,
                             dst_blob_path=pmtiles_blob_path)
+
+                for layer_name, fgb_layer_path in fgb_layers.items():
+                    upload_blob(src_path=fgb_layer_path, connection_string=conn_string, container_name=container_name,
+                                dst_blob_path=f"{pmtiles_blob_path}.{layer_name}.fgb")
+
                 upload_ingesting_blob(pmtiles_blob_path, container_name=container_name, connection_string=conn_string)
 
 
