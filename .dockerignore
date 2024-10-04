@@ -1,1 +1,7 @@
 .git
+Pipfile
+Pipfile.lock
+.github/
+dockerfiles/
+venv/
+.idea/

@@ -12,7 +12,7 @@ RUN make
 
 # Build production docker image
 # add "--platform=linux/amd64" for M1 Mac
-FROM ghcr.io/osgeo/gdal:ubuntu-small-latest
+FROM ghcr.io/osgeo/gdal:ubuntu-small-3.8.5
 
 ENV TZ=Etc/UTC
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
