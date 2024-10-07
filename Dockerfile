@@ -1,7 +1,7 @@
 # Build felt/tippecanoe
 # Dockerfile from https://github.com/felt/tippecanoe/blob/main/Dockerfile
 # add "--platform=linux/x86_64" for M1 Mac
-FROM ubuntu:24.04 AS tippecanoe-builder
+FROM ubuntu:22.04 AS tippecanoe-builder
 
 RUN apt-get update \
   && apt-get -y install build-essential libsqlite3-dev zlib1g-dev git
@@ -22,7 +22,7 @@ WORKDIR /usr/src/app
 COPY requirements.txt ./
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
-  libffi-dev python3-pip \
+  libffi-dev python3-pip libsqlite3-0 \
   && rm -rf /var/lib/apt/lists/* \
   && pip3 install --no-cache-dir -r requirements.txt
 
