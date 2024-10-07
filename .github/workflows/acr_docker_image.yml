@@ -39,7 +39,7 @@ jobs:
     # This job is going to trigger an event named `bump-pipeline-version` 
     # on undp-data/geohub repo in order to make a PR to bump version of data pipeline to AKS
     - name: dispatch event to GeoHub repo to create release PR
-      uses: peter-evans/repository-dispatch@v1
+      uses: peter-evans/repository-dispatch@v3
       if: startsWith(github.ref, 'refs/tags/v')
       with:
         repository: undp-data/geohub
