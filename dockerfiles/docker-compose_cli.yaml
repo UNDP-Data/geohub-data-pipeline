@@ -2,13 +2,16 @@ version: '3'
 services:
   geohub-data-pipeline:
     #user: 1000:1000
-    build: ./
-    command: "python -m ingest.cli.main"
-#    env_file:
-#      - ../.env
+    build:
+      context: ..
+      dockerfile: ./Dockerfile
+#    command: "python -m ingest.cli.main"
+    command: "python -m ingest.fgb_upload.main -u jin.igarashi@undp.org -dst /data"
+    env_file:
+      - ../.env
 #    environment:
 #      - user=1000
-#    volumes:
-#      - /home/janf/Downloads/data:/data
+    volumes:
+      - ../data:/data
 #      - /etc/passwd:/etc/passwd:ro
 #      - /etc/group:/etc/group:ro

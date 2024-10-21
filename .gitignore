@@ -7,3 +7,4 @@ Pipfile.lock
 test.tif
 *.pyc 
 deployment/test
+data/
