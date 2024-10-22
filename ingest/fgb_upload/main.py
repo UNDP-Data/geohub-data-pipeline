@@ -10,7 +10,7 @@ from osgeo import gdal
 import aiohttp
 from pmtiles.reader import Reader, MemorySource
 from datetime import datetime, timedelta
-
+from ingest.azblob import upload_blob
 from ingest.processing import dataset2fgb
 from ingest.utils import prepare_arch_path
 
@@ -24,6 +24,9 @@ logger.handlers.clear()
 logger.addHandler(sthandler)
 logger.name = __name__
 logger.setLevel(logging.INFO)
+
+logging.getLogger('azure').setLevel(logging.WARNING)
+
 
 AZURE_STORAGE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
 
@@ -81,29 +84,27 @@ def generate_sas_url(container_client, blob_name):
     return sas_token
 
 
-def download_blob(blob_client: BlobClient, download_path: str):
+def download_blob(container_client, blob_name: str, download_path: str):
     """Download a blob to a local file with a progress bar."""
+    blob_client = container_client.get_blob_client(blob_name)
 
-    logger.info(f"Downloading {blob_client.name} to {download_path}")
-    # blob_properties = blob_client.get_blob_properties()
-    # total_size = blob_properties.size
+    logger.info(f"Downloading {blob_name.name} to {download_path}")
+    blob_properties = blob_client.get_blob_properties()
+
+    download_dir = os.path.dirname(download_path)
+    if not os.path.exists(download_dir):
+        os.makedirs(download_dir)
 
     with open(download_path, "wb") as f:
         stream = blob_client.download_blob()
-        # progress_bar = tqdm(total=total_size, unit='B', unit_scale=True, desc="Downloading blob")
         for chunk in stream.chunks():
             f.write(chunk)
-        #     progress_bar.update(len(chunk))
-        # progress_bar.close()
     logger.info(f"Downloaded {blob_client.blob_name} to {download_path}")
 
 
-async def ingest_user_folder(user_id, container_client, dist_dir, timeout_event: multiprocessing.Event = None,):
-    print(user_id)
-    dataset_path = f"{user_id}/datasets"
-
+async def ingest_user_folder(user_id: str, container_client: ContainerClient, dist_dir: str, timeout_event: multiprocessing.Event = None,):
     # find pmtiles files in datasets folder
-    for blob in container_client.list_blobs(name_starts_with=dataset_path):
+    for blob in container_client.list_blobs(name_starts_with=f"{user_id}/datasets"):
         if blob.name.split(".")[-1] != 'pmtiles':
             continue
         pmtiles_path = blob.name
@@ -116,23 +117,27 @@ async def ingest_user_folder(user_id, container_client, dist_dir, timeout_event:
         if layer_count == 0:
             continue
         else:
-            # single layer
+            # check if fgb is already uploaed
+            fgb_blob_list = [blob for blob in container_client.list_blobs(name_starts_with=pmtiles_path) if
+                         blob.name.split(".")[-1] == "fgb"]
+            if len(fgb_blob_list) > 0:
+                logger.debug(f"{pmtiles_path} has already fgb uploaded. Skip this dataset.")
+                continue
+
             parts = pmtiles_path.split('/')
 
             join_vector_tiles =  layer_count == 1
-            print(f"join_vector_tiles: {join_vector_tiles}")
-            raw_file = f"{container_client.url}/{user_id}/raw/{parts[2]}"
-            raw_blob_name = parts[2]
-            raw_file_path = os.path.join(dist_dir, raw_blob_name)
+            raw_blob_name = f"{user_id}/raw/{parts[2]}"
+            raw_file = f"{container_client.url}/{raw_blob_name}"
+            raw_file_path = os.path.join(dist_dir, f"{raw_blob_name}")
 
-            blob_list = [blob for blob in container_client.list_blobs(name_starts_with=f"{user_id}/raw/{parts[2]}") if blob.name == f"{user_id}/raw/{parts[2]}"]
+            blob_list = [blob for blob in container_client.list_blobs(name_starts_with=raw_blob_name) if blob.name == raw_blob_name]
 
-            print(f"blob_list: {len(blob_list)}")
             if not blob_list:
                 continue
-            blob_client = blob_list[0]
+            blob_name = blob_list[0]
 
-            download_blob(blob_client, raw_file_path)
+            download_blob(container_client, blob_name, raw_file_path)
             src_file_path = prepare_arch_path(src_path=raw_file_path)
             try:
                 vdataset = gdal.OpenEx(src_file_path, gdal.OF_VECTOR)
@@ -144,30 +149,47 @@ async def ingest_user_folder(user_id, container_client, dist_dir, timeout_event:
             if vdataset is not None:
                 logger.info(f'Opened {raw_file} with {vdataset.GetDriver().ShortName} vector driver')
                 nvector_layers = vdataset.GetLayerCount()
+                layer_names = [vdataset.GetLayerByIndex(i).GetName() for i in range(nvector_layers)]
+                fgb_dir = os.path.join(dist_dir, raw_blob_name.replace("/raw/", "/datasets/"))
+                if not os.path.exists(fgb_dir):
+                    os.makedirs(fgb_dir)
+
                 if nvector_layers > 0:
                     if not join_vector_tiles:
                         # multi layers
-                        for layer in layers:
-                            fgb_layers = dataset2fgb(fgb_dir=dist_dir,
+                        for layer_name in layer_names:
+                            fgb_layers = dataset2fgb(fgb_dir=fgb_dir,
                                                      src_ds=vdataset,
-                                                     layers=[layer],
+                                                     layers=[layer_name],
                                                      timeout_event=timeout_event,
                                                      conn_string=AZURE_STORAGE_CONNECTION_STRING,
-                                                     blob_url=raw_file)
-                            print(fgb_layers)
+                                                     blob_url=raw_file,
+                                                     silent_mode=True)
+
+                            if fgb_layers:
+                                for layer_name in fgb_layers:
+                                    fgb_layer_path = fgb_layers[layer_name]
+                                    upload_blob(src_path=fgb_layer_path, connection_string=AZURE_STORAGE_CONNECTION_STRING,
+                                                container_name=container_client.container_name,
+                                                dst_blob_path=f"{pmtiles_path}.{layer_name}.fgb",
+                                                overwrite=False)
                     else:
                         # single layers
-                        fgb_layers = dataset2fgb(fgb_dir=dist_dir,
+                        fgb_layers = dataset2fgb(fgb_dir=fgb_dir,
                                                  src_ds=vdataset,
-                                                 layers=layers,
+                                                 layers=layer_names,
                                                  timeout_event=timeout_event,
                                                  conn_string=AZURE_STORAGE_CONNECTION_STRING,
-                                                 blob_url=raw_file)
-                        print(fgb_layers)
-
-
-
-        print(layers)
+                                                 blob_url=raw_file,
+                                                 silent_mode=True)
+                        if fgb_layers:
+                            for layer_name in fgb_layers:
+                                fgb_layer_path = fgb_layers[layer_name]
+                                logger.info(f"{fgb_layer_path} to {pmtiles_path}.fgb")
+                                upload_blob(src_path=fgb_layer_path, connection_string=AZURE_STORAGE_CONNECTION_STRING,
+                                            container_name=container_client.container_name,
+                                            dst_blob_path=f"{pmtiles_path}.fgb",
+                                            overwrite=False)
 
 
 async def main():
@@ -176,7 +198,7 @@ async def main():
         description='Convert previous vector data to flatgeobuf and upload them to blob storage',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-u', '--user',
-                        help='User email address to process',
+                        help='User email address to process. If not specified, process all users',
                         type=str, )
     parser.add_argument('-c', '--container',
                         help='Target container name of blob storage',
@@ -197,19 +219,18 @@ async def main():
     if not os.path.exists(dist_dir):
         os.mkdir(dist_dir)
 
-    user_id = generate_userid(args.user)
-    print(user_id)
-
     container_client = get_blob_container(args.container)
-    if not user_id:
+    if not args.user:
         user_ids = list(
             set([blob.name.split("/")[0] for blob in container_client.list_blobs() if
                  blob.name.split("/")[0] != "test"])
         )
-
-        for id in user_ids:
-            await ingest_user_folder(id, container_client, dist_dir, timeout_event=timeout_event)
+        for user_id in user_ids:
+            logger.info(f"Processing user: {user_id}")
+            await ingest_user_folder(user_id, container_client, dist_dir, timeout_event=timeout_event)
     else:
+        user_id = generate_userid(args.user)
+        logger.info(f"Processing user: {user_id}")
         await ingest_user_folder(user_id, container_client, dist_dir, timeout_event=timeout_event)
 
 if __name__ == '__main__':

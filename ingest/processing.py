@@ -100,7 +100,8 @@ def dataset2fgb(fgb_dir: str = None,
                 dst_prj_epsg: int = 4326,
                 conn_string: str = None,
                 blob_url: str = None,
-                timeout_event=None):
+                timeout_event=None,
+                silent_mode=False):
     """
     Convert one or more layers from src_ds into FlatGeobuf format in a (temporary) directory featuring dst_prj_epsg
     projection. The layer is possibly reprojected. In case errors are encountered an error blob is uploaded for now
@@ -112,6 +113,7 @@ def dataset2fgb(fgb_dir: str = None,
     @param conn_string: the connection string used to connect to the Azure storage account
     @param blob_url: the url of the blob to be ingested
     @param timeout_event:
+    @param silent_mode: if True, it will not upload error file
     @return:
     """
     dst_srs = osr.SpatialReference()
@@ -168,9 +170,12 @@ def dataset2fgb(fgb_dir: str = None,
                 error_blob_path = f'{"/".join(rest)}/{blob_name}.error'
                 logger.info(f'Uploading error message to {error_blob_path}')
                 error_message = f'There could be issues with layer "{lname}".\nOriginal number of features/geometries ={original_features} while converted={converted_features}'
-                upload_content_to_blob(content=error_message, connection_string=conn_string,
-                                       container_name=container_name,
-                                       dst_blob_path=error_blob_path)
+                if silent_mode:
+                    logger.info(f"skipped uploading error file")
+                else:
+                    upload_content_to_blob(content=error_message, connection_string=conn_string,
+                                           container_name=container_name,
+                                           dst_blob_path=error_blob_path)
 
 
 
@@ -194,9 +199,12 @@ def dataset2fgb(fgb_dir: str = None,
                         container_name, *rest, blob_name = blob_name.split("/")
                         error_blob_path = f'{"/".join(rest)}/{blob_name}.error'
                         logger.info(f'Uploading error message to {error_blob_path}')
-                        upload_content_to_blob(content=error_message, connection_string=conn_string,
-                                               container_name=container_name,
-                                               dst_blob_path=error_blob_path)
+                        if silent_mode:
+                            logger.info(f"skipped uploading error file")
+                        else:
+                            upload_content_to_blob(content=error_message, connection_string=conn_string,
+                                                   container_name=container_name,
+                                                   dst_blob_path=error_blob_path)
 
 
     return converted_layers
