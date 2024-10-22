@@ -172,7 +172,7 @@ async def ingest_user_folder(user_id: str, container_client: ContainerClient, di
                                     upload_blob(src_path=fgb_layer_path, connection_string=AZURE_STORAGE_CONNECTION_STRING,
                                                 container_name=container_client.container_name,
                                                 dst_blob_path=f"{pmtiles_path}.{layer_name}.fgb",
-                                                overwrite=False)
+                                                overwrite=True)
                     else:
                         # single layers
                         fgb_layers = dataset2fgb(fgb_dir=fgb_dir,
@@ -189,7 +189,7 @@ async def ingest_user_folder(user_id: str, container_client: ContainerClient, di
                                 upload_blob(src_path=fgb_layer_path, connection_string=AZURE_STORAGE_CONNECTION_STRING,
                                             container_name=container_client.container_name,
                                             dst_blob_path=f"{pmtiles_path}.fgb",
-                                            overwrite=False)
+                                            overwrite=True)
 
 
 async def main():
