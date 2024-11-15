@@ -1,7 +1,7 @@
 azure_storage_blob==12.23.1
 rasterio==1.4.1
 rio_cogeo==4.0.1
-aiohttp==3.10.9
+aiohttp==3.11.2
 azure-servicebus==7.8.2
 pmtiles==3.4.0
 aiofile==3.8.8
