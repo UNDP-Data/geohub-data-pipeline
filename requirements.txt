@@ -1,4 +1,4 @@
-azure_storage_blob==12.23.1
+azure_storage_blob==12.24.1
 rasterio==1.4.1
 rio_cogeo==4.0.1
 aiohttp==3.10.9
