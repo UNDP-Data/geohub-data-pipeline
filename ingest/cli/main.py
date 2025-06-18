@@ -37,4 +37,4 @@ if __name__ == '__main__':
         logger.setLevel(logging.DEBUG)
     cancel_event = multiprocessing.Event()
     process_geo_file(src_file_path=args.source_file, dst_directory=args.destination_directory,
-                     join_vector_tiles=args.join_vector_tiles)#, timeout_event=cancel_event)
+                     join_vector_tiles=args.join_vector_tiles, timeout_event=cancel_event)
