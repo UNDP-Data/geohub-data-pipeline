@@ -497,6 +497,7 @@ def dataset2cog(blob_url=None, src_ds: gdal.Dataset = None, bands: typing.List[i
                 cog_path,
                 output_profile,
                 indexes=bands,
+                resampling="nearest",
                 overview_resampling="nearest",
                 in_memory=False,
                 forward_band_tags=True,
