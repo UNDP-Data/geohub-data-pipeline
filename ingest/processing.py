@@ -10,6 +10,7 @@ import tempfile
 from ingest.config import gdal_configs, attribution, AZURE_WEBPUBSUB_GROUP_NAME
 from rio_cogeo import cog_validate, cog_translate
 from rio_cogeo.profiles import cog_profiles
+import morecantile
 from azure.messaging.webpubsubclient.models import WebPubSubDataType
 import logging
 from ingest.utils import (
@@ -502,6 +503,7 @@ def dataset2cog(blob_url=None, src_ds: gdal.Dataset = None, bands: typing.List[i
                 in_memory=False,
                 forward_band_tags=True,
                 use_cog_driver=True,
+                tms=morecantile.tms.get("WebMercatorQuad"),
                 quiet=False,
                 progress_out=progress_callback,
             )
