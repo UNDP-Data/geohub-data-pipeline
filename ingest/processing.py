@@ -2,12 +2,15 @@ import io
 import multiprocessing
 import os.path
 import json
+import re
 from osgeo import gdal, osr, ogr
 from pmtiles.reader import Reader, MmapSource
 import typing
 import tempfile
 from ingest.config import gdal_configs, attribution, AZURE_WEBPUBSUB_GROUP_NAME
-from rio_cogeo import cog_validate
+from rio_cogeo import cog_validate, cog_translate
+from rio_cogeo.profiles import cog_profiles
+import morecantile
 from azure.messaging.webpubsubclient.models import WebPubSubDataType
 import logging
 from ingest.utils import (
@@ -446,6 +449,22 @@ def gdal_callback(complete, message, timeout_event):
         logger.info(f'GDAL received timeout signal')
         return 0
 
+class TimeoutProgress(io.StringIO):    
+    def __init__(self, timeout_event=None):
+        super().__init__()
+        self.timeout_event = timeout_event
+        
+    def write(self, s):
+        if self.timeout_event and self.timeout_event.is_set():
+            logger.info('GDAL received timeout signal')
+            raise RuntimeError("Operation timed out")
+        
+        if '%' in s:
+            percentage = int(re.findall(r"\d+%", s)[-1].replace("%", ""))
+            logger.debug(f'{percentage:.2f}%')
+        
+        return super().write(s)
+
 
 def dataset2cog(blob_url=None, src_ds: gdal.Dataset = None, bands: typing.List[int] = None, timeout_event=None,
                 conn_string=None, dst_directory=None):
@@ -467,27 +486,28 @@ def dataset2cog(blob_url=None, src_ds: gdal.Dataset = None, bands: typing.List[i
             dst_folder = dst_directory if dst_directory else temp_dir
             cog_path = get_local_cog_path(src_path=src_path, dst_folder=dst_folder, band=band)
 
-            band_word = f'band {band}' if band else 'bands'
-            cog_ds = gdal.Translate(
-                destName=cog_path,
-                srcDS=src_ds,
-                format="COG",
-                bandList=bands,
-                creationOptions=[
-                    "BLOCKSIZE=256",
-                    "OVERVIEWS=IGNORE_EXISTING",
-                    "COMPRESS=ZSTD",
-                    "PREDICTOR = YES",
-                    "OVERVIEW_RESAMPLING=NEAREST",
-                    "BIGTIFF=YES",
-                    "TARGET_SRS=EPSG:3857",
-                    "RESAMPLING=NEAREST",
-                ],
-                callback=gdal_callback,
-                callback_data=timeout_event
+            output_profile = cog_profiles.get("ZSTD")
+            output_profile.update({
+                "BIGTIFF": "YES",
+            })
+
+            progress_callback = TimeoutProgress(timeout_event)
+
+            cog_translate(
+                src_path,
+                cog_path,
+                output_profile,
+                indexes=bands,
+                resampling="nearest",
+                overview_resampling="nearest",
+                in_memory=False,
+                forward_band_tags=True,
+                use_cog_driver=True,
+                tms=morecantile.tms.get("WebMercatorQuad"),
+                quiet=False,
+                progress_out=progress_callback,
             )
 
-            del cog_ds
             is_valid, errors, warnings = cog_validate(src_path=cog_path, quiet=True)
             if not is_valid:
                 sep = '\n'
