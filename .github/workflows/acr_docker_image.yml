@@ -45,6 +45,6 @@ jobs:
         repository: undp-data/geohub
         # https://www.eliostruyf.com/dispatch-github-action-fine-grained-personal-access-token/
         # need scopes of metadata and contents
-        # created `geohub-data-pipeline-bump` token which will be expired on 17 November 2024
+        # created `geohub-data-pipeline-bump` token which will be expired on 05 August 2026
         token: ${{ secrets.GEOHUB_REPO_DISPATCH_TOKEN }}
         event-type: bump-pipeline-version
